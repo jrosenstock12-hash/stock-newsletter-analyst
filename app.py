@@ -3,13 +3,13 @@ import streamlit as st
 from analyze.llm import analyze_content, test_openai_connection
 from config import apply_streamlit_secrets, get_openai_api_key
 from db.database import delete_analyses, get_analysis, init_db, list_analyses
+from ingest.date import format_display_title
 from ingest.email import parse_eml_file, parse_pasted_content
 from ingest.markdown import parse_markdown_file
 from ingest.url import fetch_url, normalize_url
 
 st.set_page_config(
     page_title="Stock Newsletter Analyst",
-    page_icon="📈",
     layout="wide",
 )
 
@@ -21,52 +21,71 @@ RATING_COLORS = {
 }
 
 
-def render_opinion_card(analysis: dict) -> None:
-    opinion = analysis["ai_opinion"]
-    rating = opinion["rating"]
-    color = RATING_COLORS.get(rating, "#6b7280")
+def yahoo_quote_url(ticker: str) -> str:
+    return f"https://finance.yahoo.com/quote/{ticker.upper()}/"
 
-    st.markdown(
-        f"""
-        <div style="
-            border: 2px solid {color};
-            border-radius: 12px;
-            padding: 1rem 1.25rem;
-            margin-bottom: 1rem;
-            background: {color}15;
-        ">
-            <div style="font-size: 1.5rem; font-weight: 700; color: {color}; text-transform: uppercase;">
-                {rating}
-            </div>
-            <div style="margin-top: 0.5rem;">
-                <strong>Confidence:</strong> {opinion["confidence"]} &nbsp;|&nbsp;
-                <strong>Horizon:</strong> {opinion["time_horizon"]}
-            </div>
-            <div style="margin-top: 0.75rem;">{opinion["rationale"]}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Catalysts**")
-        for item in opinion.get("catalysts", []):
-            st.markdown(f"- {item}")
-    with col2:
-        st.markdown("**Risks**")
-        for item in opinion.get("risks", []):
-            st.markdown(f"- {item}")
+def ticker_links(tickers: list[str]) -> str:
+    if not tickers:
+        return ""
+    links = [
+        f"[{t}]({yahoo_quote_url(t)})" for t in tickers if t and t.strip()
+    ]
+    return ", ".join(links)
+
+
+def display_title(analysis: dict, fallback_title: str = "Analysis") -> str:
+    title = analysis.get("title") or fallback_title
+    article_date = analysis.get("article_date", "")
+    return format_display_title(title, article_date)
+
+
+def history_expander_label(row: dict) -> str:
+    analysis = row["analysis"]
+    title = row["title"][:70]
+    tickers = row.get("detected_tickers") or []
+    ratings = []
+    for co in analysis.get("company_opinions", []):
+        ratings.append(f"{co.get('ticker', '?')}:{co.get('rating', 'hold').upper()}")
+    rating_part = ", ".join(ratings[:4]) if ratings else "—"
+    if len(ratings) > 4:
+        rating_part += "…"
+    return f"#{row['id']} · {title} · {rating_part}"
+
+
+def render_stocks_mentioned(company_opinions: list[dict]) -> None:
+    if not company_opinions:
+        return
+
+    st.markdown("### Stocks Mentioned")
+    for co in company_opinions:
+        ticker = co.get("ticker", "?")
+        rating = co.get("rating", "hold")
+        color = RATING_COLORS.get(rating, "#6b7280")
+        yahoo = yahoo_quote_url(ticker)
+
+        st.markdown(
+            f"#### [{ticker}]({yahoo}) — {co.get('company_name', '')} "
+            f"<span style='color:{color};font-weight:700'>"
+            f"{rating.upper()}</span> "
+            f"({co.get('confidence', 'medium')} confidence)",
+            unsafe_allow_html=True,
+        )
+        if co.get("article_says"):
+            st.markdown("**What the author said**")
+            st.write(co["article_says"])
+        if co.get("rationale"):
+            st.markdown("**Opinion**")
+            st.write(co["rationale"])
+        st.markdown("")
 
 
 def render_analysis(analysis: dict, tickers: list[str], source_label: str) -> None:
-    st.subheader(analysis.get("title", "Analysis"))
+    st.subheader(display_title(analysis))
     st.caption(f"Source: {source_label}")
 
     if tickers:
-        st.markdown("**Public tickers:** " + ", ".join(f"`{t}`" for t in tickers))
-
-    render_opinion_card(analysis)
+        st.markdown("**Tickers:** " + ticker_links(tickers), unsafe_allow_html=True)
 
     exec_summary = analysis.get("executive_summary", "")
     detailed = analysis.get("detailed_summary") or analysis.get("summary", "")
@@ -83,59 +102,7 @@ def render_analysis(analysis: dict, tickers: list[str], source_label: str) -> No
     else:
         st.write("No summary available.")
 
-    company_opinions = analysis.get("company_opinions", [])
-    if company_opinions:
-        st.markdown("### Stock opinions by company")
-        for co in company_opinions:
-            rating = co.get("rating", "hold").upper()
-            color = RATING_COLORS.get(co.get("rating", "hold"), "#6b7280")
-            st.markdown(
-                f"**{co.get('ticker', '?')} — {co.get('company_name', '')}** "
-                f": <span style='color:{color};font-weight:700'>{rating}</span> "
-                f"({co.get('confidence', 'medium')} confidence)",
-                unsafe_allow_html=True,
-            )
-            if co.get("article_says"):
-                st.markdown(f"*Article:* {co['article_says']}")
-            st.markdown(f"*Opinion:* {co.get('rationale', '')}")
-            st.markdown("")
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Article sentiment", analysis["sentiment_from_article"].title())
-    with col2:
-        st.metric("Article bias", analysis["article_bias"].title())
-    with col3:
-        st.metric(
-            "Public companies",
-            len([c for c in analysis.get("mentioned_companies", []) if c.get("is_public", True)])
-            or len(company_opinions),
-        )
-
-    st.markdown("### Key claims from the article")
-    for claim in analysis.get("key_claims", []):
-        st.markdown(f"- {claim}")
-
-    col_bull, col_bear = st.columns(2)
-    with col_bull:
-        st.markdown("### Bull case")
-        st.write(analysis["bull_case"])
-    with col_bear:
-        st.markdown("### Bear case")
-        st.write(analysis["bear_case"])
-
-    companies = analysis.get("mentioned_companies", [])
-    if companies:
-        st.markdown("### All companies mentioned")
-        for co in companies:
-            pub = "public" if co.get("is_public", True) else "private"
-            ticker = co.get("ticker") or "—"
-            st.markdown(
-                f"- **{ticker}** — {co['company_name']} "
-                f"({co['relevance']}, {pub})"
-            )
-            if co.get("how_article_mentions_it"):
-                st.caption(co["how_article_mentions_it"])
+    render_stocks_mentioned(analysis.get("company_opinions", []))
 
     st.info(analysis.get("disclaimer", ""))
 
@@ -238,13 +205,7 @@ def page_history() -> None:
         return
 
     for row in rows:
-        opinion = row["analysis"]["ai_opinion"]
-        rating = opinion["rating"].upper()
-        tickers = ", ".join(row["detected_tickers"]) or "—"
-
-        with st.expander(
-            f"#{row['id']} · {rating} · {row['title'][:80]} · {tickers}"
-        ):
+        with st.expander(history_expander_label(row)):
             st.caption(
                 f"{row['created_at'][:19]} · {row['source_type']} · "
                 f"{row['source_label'][:120]}"
@@ -288,10 +249,10 @@ def main() -> None:
             "`cd ~/stock-newsletter-analyst && ./start.sh`"
         )
 
-    st.title("📈 Stock Newsletter Analyst")
+    st.title("Stock Newsletter Analyst")
     st.caption(
         "Paste a newsletter, upload an email, or drop in a link — get a stock-focused "
-        "summary with a buy/hold/sell opinion. Personal use only; not financial advice."
+        "summary with buy/hold/sell opinions by stock. Personal use only; not financial advice."
     )
 
     tab_analyze, tab_history = st.tabs(["Analyze", "History"])

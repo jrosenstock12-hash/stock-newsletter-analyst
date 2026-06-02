@@ -7,3 +7,4 @@ class IngestResult:
     text: str
     source_type: str
     source_label: str
+    article_date: str = ""

@@ -29,6 +29,7 @@ Streamlit uses `analyze/llm.py` subprocess worker to avoid sandbox connection er
 
 ## Output schema
 
+- `article_date` — YYYY-MM-DD when known; prefixed on saved title
 - `executive_summary` — short
 - `detailed_summary` — 3–5 min read (~500–1200 words)
-- `company_opinions` — per public ticker buy/hold/sell
+- `company_opinions` — per ticker: article_says + buy/hold/sell rationale (no overall article rating)

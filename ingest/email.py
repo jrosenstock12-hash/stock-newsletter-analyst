@@ -5,6 +5,7 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 from ingest.clean import clean_newsletter_text
+from ingest.date import detect_date_in_text, parse_email_date_header
 from ingest.models import IngestResult
 from ingest.title import detect_title
 
@@ -39,6 +40,7 @@ def parse_pasted_content(content: str, title: str = "") -> IngestResult:
         text=text,
         source_type="paste",
         source_label="pasted content",
+        article_date=detect_date_in_text(text),
     )
 
 
@@ -80,6 +82,7 @@ def parse_eml_file(file_bytes: bytes) -> IngestResult:
         text=text,
         source_type="email",
         source_label=msg.get("From", "uploaded .eml"),
+        article_date=parse_email_date_header(msg.get("Date")),
     )
 
 

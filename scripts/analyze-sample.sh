@@ -10,10 +10,10 @@ path = Path("samples/semianalysis-dark-output.md")
 ingest = parse_markdown_file(path.read_bytes())
 print("Analyzing:", ingest.title)
 a, tickers, aid = analyze_content(ingest)
-print(f"\nSaved #{aid} | Overall: {a.ai_opinion.rating.upper()} ({a.ai_opinion.confidence})")
+print(f"\nSaved #{aid} | Tickers: {', '.join(tickers)}")
 print(f"Summary: {len(a.detailed_summary.split())} words")
 print("\n--- Executive ---\n", a.executive_summary)
-print("\n--- Company opinions ---")
+print("\n--- Stocks Mentioned ---")
 for co in a.company_opinions:
     print(f"  {co.ticker}: {co.rating.upper()} — {co.rationale[:100]}...")
 PY

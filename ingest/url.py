@@ -7,6 +7,7 @@ import trafilatura
 
 from config import USER_AGENT
 from ingest.clean import clean_newsletter_text
+from ingest.date import normalize_date
 from ingest.models import IngestResult
 
 TRACKING_QUERY_PREFIXES = ("_gl", "utm_", "fbclid", "gclid", "mc_", "ref")
@@ -135,9 +136,14 @@ def fetch_url(url: str) -> IngestResult:
             f"{hint}"
         )
 
+    article_date = ""
+    if metadata and metadata.date:
+        article_date = normalize_date(metadata.date)
+
     return IngestResult(
         title=title,
         text=text,
         source_type="url",
         source_label=url,
+        article_date=article_date,
     )

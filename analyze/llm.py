@@ -73,6 +73,7 @@ def analyze_content(
         "text": ingest.text,
         "source_type": ingest.source_type,
         "source_label": ingest.source_label,
+        "article_date": ingest.article_date,
     }
     result = _run_worker(job)
     analysis = StockAnalysis.model_validate(result["analysis"])

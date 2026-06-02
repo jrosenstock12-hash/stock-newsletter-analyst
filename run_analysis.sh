@@ -13,12 +13,12 @@ analysis, tickers, analysis_id = analyze_content(ingest)
 print("=" * 60)
 print(f"SAVED AS ANALYSIS #{analysis_id}")
 print("=" * 60)
-print(f"RATING: {analysis.ai_opinion.rating.upper()} | Confidence: {analysis.ai_opinion.confidence}")
-print(f"Horizon: {analysis.ai_opinion.time_horizon}\n")
-print(f"RATIONALE: {analysis.ai_opinion.rationale}\n")
-print(f"SUMMARY:\n{analysis.summary}\n")
-if analysis.mentioned_companies:
-    print("COMPANIES:")
-    for c in analysis.mentioned_companies:
-        print(f"  {c.ticker} — {c.company_name} ({c.relevance})")
+print(f"Tickers: {', '.join(tickers)}\n")
+print(f"EXECUTIVE:\n{analysis.executive_summary}\n")
+print(f"DETAILED ({len(analysis.detailed_summary.split())} words):\n{analysis.detailed_summary[:500]}...\n")
+print("STOCKS MENTIONED:")
+for co in analysis.company_opinions:
+    print(f"  {co.ticker}: {co.rating.upper()} ({co.confidence})")
+    print(f"    Article: {co.article_says[:120]}...")
+    print(f"    Opinion: {co.rationale[:120]}...")
 PY
