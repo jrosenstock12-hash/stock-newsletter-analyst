@@ -14,16 +14,16 @@ Rules:
 1. Clearly separate what the ARTICLE states vs your AI opinion derived from that content.
 2. Identify ALL publicly traded companies relevant to the article — use the verified Yahoo Finance list provided even when the article omits ticker symbols.
 3. Provide a company_opinion (buy/hold/sell/avoid) for EACH verified public company that the article discusses or that is materially impacted by its thesis.
-4. For each company_opinion:
-   - article_says: a thorough paragraph on what the author said about this stock (claims, data, tone, implications). Do not be brief.
-   - rationale: your buy/hold/sell/avoid opinion based on what the article said, and why.
-5. Write detailed_summary as a thorough narrative (~3-5 minute read) covering the article's main arguments, data points, and market implications — not a bullet list.
+4. For each company_opinion (max 8 tickers):
+   - article_says: 2-4 sentences on what the author said about this stock.
+   - rationale: 2-3 sentences with buy/hold/sell/avoid and why.
+5. Write detailed_summary as a narrative within the target word count — not a bullet list.
 6. executive_summary is only 2-4 sentences for a quick skim.
 7. Set article_date to YYYY-MM-DD when the publish date appears in the article; otherwise leave empty.
 8. Be conservative with ratings when evidence is weak, promotional, or macro-only.
 9. Do not invent facts, prices, or events not supported by the article.
 10. Do NOT produce an overall article-level buy/sell rating — only per-stock opinions in company_opinions.
-11. Limit company_opinions to the 8–12 public tickers most central to the article (skip peripheral mentions)."""
+11. At most 8 company_opinions — only the most central public tickers."""
 
 USER_PROMPT_TEMPLATE = """Analyze this article/newsletter for public stock implications.
 
@@ -43,7 +43,7 @@ Return structured analysis with:
 - article_date: YYYY-MM-DD if known
 - executive_summary: 2-4 sentences
 - detailed_summary: ~{target_words} word narrative (3-5 min read)
-- company_opinions: one entry per PUBLIC company with ticker, rating, confidence, article_says (detailed), rationale (opinion + why)"""
+- company_opinions: up to 8 entries; concise article_says and rationale per ticker"""
 
 
 def _make_client() -> OpenAI:
@@ -53,7 +53,7 @@ def _make_client() -> OpenAI:
             "OPENAI_API_KEY is not set. Edit ~/stock-newsletter-analyst/.env "
             "and add your key from platform.openai.com/api-keys"
         )
-    return OpenAI(api_key=api_key, timeout=180.0)
+    return OpenAI(api_key=api_key, timeout=300.0)
 
 
 def _friendly_error(exc: Exception) -> ValueError:
@@ -72,6 +72,11 @@ def _friendly_error(exc: Exception) -> ValueError:
     if "authentication" in err or "api key" in err or "401" in err:
         return ValueError(
             "OpenAI rejected your API key. Check ~/stock-newsletter-analyst/.env"
+        )
+    if "length limit" in err or "length_limit" in err:
+        return ValueError(
+            "Analysis output was too long and got cut off. "
+            "Retry once; if it persists, paste a shorter excerpt of the article."
         )
     return ValueError(str(exc))
 
@@ -108,12 +113,14 @@ def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]
     client = _make_client()
     model = get_openai_model()
 
-    target_words = target_summary_words(ingest.text)
-    read_time = _read_time_minutes(target_words)
-
     public_companies, public_block = build_public_company_context(
         client, model, ingest.text, tickers
     )
+
+    target_words = target_summary_words(
+        ingest.text, company_count=len(public_companies)
+    )
+    read_time = _read_time_minutes(target_words)
 
     all_tickers = list(
         dict.fromkeys(tickers + [c.ticker for c in public_companies])
@@ -138,13 +145,20 @@ def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]
                 },
             ],
             response_format=StockAnalysis,
-            max_tokens=8000,
+            max_tokens=16384,
         )
     except Exception as exc:
         raise _friendly_error(exc) from exc
 
-    parsed = completion.choices[0].message.parsed
+    choice = completion.choices[0]
+    parsed = choice.message.parsed
     if parsed is None:
+        finish = getattr(choice, "finish_reason", None)
+        if finish == "length":
+            raise ValueError(
+                "Analysis output was too long and got cut off. "
+                "Retry once; if it persists, paste a shorter excerpt of the article."
+            )
         raise ValueError("Model did not return a valid analysis.")
 
     article_date = _resolve_article_date(ingest, parsed)

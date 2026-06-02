@@ -58,12 +58,15 @@ class PublicCompany:
         return " — ".join(parts)
 
 
-def target_summary_words(article_text: str) -> int:
+MAX_COMPANIES_FOR_ANALYSIS = 8
+
+
+def target_summary_words(article_text: str, *, company_count: int = 0) -> int:
     """~3–5 min read at ~200 wpm; scales with article length."""
     word_count = len(article_text.split())
-    # Roughly 18–22% of article length, bounded for read time
-    target = int(word_count * 0.20)
-    return max(500, min(target, 1200))
+    target = int(word_count * 0.18)
+    cap = 900 if company_count > 5 else 1100
+    return max(450, min(target, cap))
 
 
 def _yahoo_search(query: str) -> list[dict]:
@@ -289,6 +292,7 @@ def build_public_company_context(
     if not companies:
         return [], "No public companies resolved via Yahoo Finance."
 
+    companies = companies[:MAX_COMPANIES_FOR_ANALYSIS]
     lines = [c.to_prompt_line() for c in companies]
     return companies, "Verified public listings (Yahoo Finance):\n" + "\n".join(
         f"- {line}" for line in lines
