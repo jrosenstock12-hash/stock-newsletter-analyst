@@ -14,16 +14,20 @@ Rules:
 1. Clearly separate what the ARTICLE states vs your AI opinion derived from that content.
 2. Identify ALL publicly traded companies relevant to the article — use the verified Yahoo Finance list provided even when the article omits ticker symbols.
 3. Provide a company_opinion (buy/hold/sell/avoid) for EACH verified public company that the article discusses or that is materially impacted by its thesis.
-4. For each company_opinion (max 8 tickers):
-   - article_says: 2-4 sentences on what the author said about this stock.
-   - rationale: 2-3 sentences with buy/hold/sell/avoid and why.
+4. For each company_opinion (max 8 tickers; omit tickers the article does not materially discuss):
+   - article_says: a full paragraph (5-8 sentences) summarizing what the author said about
+     this stock — include specific metrics, trends, Bedrock/TaaS/capacity details, and
+     comparisons to peers when present in the article. Only use 2-3 sentences if the
+     company is mentioned in passing.
+   - rationale: 3-5 sentences with buy/hold/sell/avoid and clear reasoning tied to article_says.
 5. Write detailed_summary as a narrative within the target word count — not a bullet list.
 6. executive_summary is only 2-4 sentences for a quick skim.
 7. Set article_date to YYYY-MM-DD when the publish date appears in the article; otherwise leave empty.
 8. Be conservative with ratings when evidence is weak, promotional, or macro-only.
 9. Do not invent facts, prices, or events not supported by the article.
 10. Do NOT produce an overall article-level buy/sell rating — only per-stock opinions in company_opinions.
-11. At most 8 company_opinions — only the most central public tickers."""
+11. At most 8 company_opinions — only tickers the article materially discusses; do not
+    include peripheral hardware suppliers (e.g. NVIDIA) unless the author analyzes them."""
 
 USER_PROMPT_TEMPLATE = """Analyze this article/newsletter for public stock implications.
 
@@ -43,7 +47,7 @@ Return structured analysis with:
 - article_date: YYYY-MM-DD if known
 - executive_summary: 2-4 sentences
 - detailed_summary: ~{target_words} word narrative (3-5 min read)
-- company_opinions: up to 8 entries; concise article_says and rationale per ticker"""
+- company_opinions: up to 8 entries; substantive article_says paragraphs per ticker"""
 
 
 def _make_client() -> OpenAI:

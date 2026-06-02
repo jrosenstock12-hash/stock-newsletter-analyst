@@ -65,8 +65,8 @@ def target_summary_words(article_text: str, *, company_count: int = 0) -> int:
     """~3–5 min read at ~200 wpm; scales with article length."""
     word_count = len(article_text.split())
     target = int(word_count * 0.18)
-    cap = 900 if company_count > 5 else 1100
-    return max(450, min(target, cap))
+    cap = 750 if company_count > 5 else 950
+    return max(400, min(target, cap))
 
 
 def _yahoo_search(query: str) -> list[dict]:

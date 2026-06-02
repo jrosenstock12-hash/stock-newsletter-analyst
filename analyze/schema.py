@@ -9,10 +9,16 @@ class CompanyOpinion(BaseModel):
     rating: Literal["buy", "hold", "sell", "avoid"]
     confidence: Literal["low", "medium", "high"]
     article_says: str = Field(
-        description="2-4 sentences: what the author said about this stock"
+        description=(
+            "What the author said about this stock: a full paragraph (5-8 sentences) "
+            "with specific claims, numbers, and comparisons when the article discusses "
+            "the company; shorter only if barely mentioned"
+        )
     )
     rationale: str = Field(
-        description="2-3 sentences: buy/hold/sell/avoid opinion and why"
+        description=(
+            "Buy/hold/sell/avoid opinion in 3-5 sentences tied to article_says"
+        )
     )
 
 
