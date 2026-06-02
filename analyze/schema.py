@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CompanyOpinion(BaseModel):
@@ -22,7 +22,20 @@ class CompanyOpinion(BaseModel):
     )
 
 
+class AiOpinion(BaseModel):
+    """Legacy field — not shown in UI; optional for API compatibility."""
+
+    rating: Literal["buy", "hold", "sell", "avoid"] = "hold"
+    confidence: Literal["low", "medium", "high"] = "medium"
+    rationale: str = ""
+    time_horizon: Literal["short", "medium", "long"] = "medium"
+    catalysts: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+
+
 class StockAnalysis(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     title: str
     article_date: str = Field(
         default="",
@@ -42,3 +55,15 @@ class StockAnalysis(BaseModel):
         "Not financial advice. This analysis is based solely on the provided "
         "article content and does not incorporate external market data."
     )
+    # Legacy optional fields (not displayed; prevent validation errors on deploy)
+    key_claims: list[str] = Field(default_factory=list)
+    bull_case: str = ""
+    bear_case: str = ""
+    sentiment_from_article: Literal["bullish", "bearish", "neutral", "mixed"] = (
+        "neutral"
+    )
+    ai_opinion: AiOpinion = Field(default_factory=AiOpinion)
+    article_bias: Literal[
+        "analytical", "promotional", "news", "opinion", "rumor", "mixed", "unknown"
+    ] = "unknown"
+    no_actionable_stocks: bool = False
