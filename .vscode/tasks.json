@@ -1,0 +1,27 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Streamlit app",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/start.sh",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "Test OpenAI connection",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/test-api.sh"
+    },
+    {
+      "label": "Analyze sample article",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/analyze-sample.sh"
+    },
+    {
+      "label": "Setup project",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/setup.sh"
+    }
+  ]
+}

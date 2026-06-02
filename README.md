@@ -4,19 +4,24 @@ Personal tool to analyze newsletters and articles for public stock implications.
 
 **Not financial advice.** Opinions are derived from article content only.
 
+## Open in Cursor (recommended)
+
+1. **File → Open Folder** → `~/stock-newsletter-analyst`
+   - Or double-click `stock-newsletter-analyst.code-workspace`
+2. Terminal: `./scripts/setup.sh` then `./scripts/start.sh`
+3. Open http://localhost:8503
+
+See **AGENTS.md** for agent/terminal commands.
+
 ## Quick start
 
 ```bash
 cd ~/stock-newsletter-analyst
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# Edit .env and add your OPENAI_API_KEY
-streamlit run app.py
+./scripts/setup.sh
+./scripts/start.sh
 ```
 
-Open the URL Streamlit prints (usually http://localhost:8501).
+Open http://localhost:8503
 
 ## Input methods
 

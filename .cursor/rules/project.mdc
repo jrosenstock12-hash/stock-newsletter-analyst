@@ -1,0 +1,34 @@
+---
+description: Stock newsletter analyst app — conventions and terminal commands
+alwaysApply: true
+---
+
+# Stock Newsletter Analyst
+
+Workspace root: `stock-newsletter-analyst/` (user home: `~/stock-newsletter-analyst`).
+
+## Run in terminal (preferred)
+
+```bash
+cd ~/stock-newsletter-analyst
+./scripts/setup.sh    # once
+./scripts/start.sh    # Streamlit http://localhost:8503
+./scripts/test-api.sh
+```
+
+## Do not
+
+- Commit `.env`, `data/*.db`, or `.venv/`
+- Paste API keys in chat
+
+## Analysis pipeline
+
+`ingest` → `analyze/companies.py` (Yahoo lookup) → `analyze/llm_core.py` (OpenAI) → `db/database.py`
+
+Streamlit uses `analyze/llm.py` subprocess worker to avoid sandbox connection errors.
+
+## Output schema
+
+- `executive_summary` — short
+- `detailed_summary` — 3–5 min read (~500–1200 words)
+- `company_opinions` — per public ticker buy/hold/sell
