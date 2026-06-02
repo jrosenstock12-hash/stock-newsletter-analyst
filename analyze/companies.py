@@ -1,5 +1,6 @@
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
 
@@ -7,6 +8,9 @@ from config import USER_AGENT
 
 YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
 PUBLIC_QUOTE_TYPES = {"EQUITY", "ETF"}
+MAX_LLM_COMPANY_NAMES = 18
+MAX_YAHOO_LOOKUPS = 8
+YAHOO_TIMEOUT_SEC = 8.0
 
 # Well-known names articles reference without tickers
 KNOWN_PUBLIC = {
@@ -65,7 +69,7 @@ def target_summary_words(article_text: str) -> int:
 def _yahoo_search(query: str) -> list[dict]:
     with httpx.Client(
         trust_env=False,
-        timeout=15.0,
+        timeout=YAHOO_TIMEOUT_SEC,
         headers={"User-Agent": USER_AGENT},
     ) as client:
         response = client.get(
@@ -126,22 +130,74 @@ def resolve_company_name(name: str) -> PublicCompany | None:
     )
 
 
-def resolve_company_names(names: list[str]) -> list[PublicCompany]:
+def known_companies_from_text(article_text: str) -> list[PublicCompany]:
+    """Resolve well-known names from article text without Yahoo API calls."""
     seen: set[str] = set()
     resolved: list[PublicCompany] = []
+    lower = article_text.lower()
+    for key, known in KNOWN_PUBLIC.items():
+        if known is None:
+            continue
+        if re.search(rf"\b{re.escape(key)}\b", lower):
+            ticker, display = known
+            if ticker not in seen:
+                seen.add(ticker)
+                resolved.append(
+                    PublicCompany(name=display, ticker=ticker, source="known")
+                )
+    return resolved
+
+
+def resolve_company_names(
+    names: list[str], *, max_yahoo: int = MAX_YAHOO_LOOKUPS
+) -> list[PublicCompany]:
+    seen: set[str] = set()
+    resolved: list[PublicCompany] = []
+    yahoo_lookups = 0
+    pending_yahoo: list[str] = []
 
     for name in names:
-        company = resolve_company_name(name)
-        if company and company.ticker not in seen:
-            seen.add(company.ticker)
-            resolved.append(company)
+        cleaned = name.strip()
+        if not cleaned or len(cleaned) < 2:
+            continue
+        key = cleaned.lower()
+        if key in KNOWN_PUBLIC:
+            known = KNOWN_PUBLIC[key]
+            if known is None:
+                continue
+            ticker, display = known
+            if ticker not in seen:
+                seen.add(ticker)
+                resolved.append(
+                    PublicCompany(name=display, ticker=ticker, source="known")
+                )
+            continue
+        if cleaned.upper() in seen:
+            continue
+        if yahoo_lookups < max_yahoo:
+            pending_yahoo.append(cleaned)
+            yahoo_lookups += 1
+
+    if pending_yahoo:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = {
+                pool.submit(resolve_company_name, n): n for n in pending_yahoo
+            }
+            for future in as_completed(futures):
+                try:
+                    company = future.result()
+                except Exception:
+                    continue
+                if company and company.ticker not in seen:
+                    seen.add(company.ticker)
+                    resolved.append(company)
 
     return resolved
 
 
 def extract_company_names_llm(client, model: str, article_text: str) -> list[str]:
     """Ask the model for organization names mentioned in the article."""
-    excerpt = article_text[:50000]
+    excerpt = article_text[:30000]
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -169,7 +225,8 @@ def extract_company_names_llm(client, model: str, article_text: str) -> list[str
     companies = data.get("companies", [])
     if not isinstance(companies, list):
         return []
-    return [str(c).strip() for c in companies if c and str(c).strip()]
+    names = [str(c).strip() for c in companies if c and str(c).strip()]
+    return names[:MAX_LLM_COMPANY_NAMES]
 
 
 def enrich_mag7(companies: list[PublicCompany]) -> list[PublicCompany]:
@@ -199,11 +256,14 @@ def build_public_company_context(
     article_text: str,
     detected_tickers: list[str],
 ) -> tuple[list[PublicCompany], str]:
+    companies = known_companies_from_text(article_text)
+    seen = {c.ticker for c in companies}
+
     names = extract_company_names_llm(client, model, article_text)
 
-    # Also try resolving detected tickers as company names
     for ticker in detected_tickers:
-        names.append(ticker)
+        if ticker not in seen:
+            names.append(ticker)
 
     if re.search(r"magnificent\s*7|mag\s*7|mag7", article_text, re.I):
         names.extend(
@@ -218,7 +278,11 @@ def build_public_company_context(
             ]
         )
 
-    companies = resolve_company_names(names)
+    for company in resolve_company_names(names):
+        if company.ticker not in seen:
+            seen.add(company.ticker)
+            companies.append(company)
+
     if re.search(r"magnificent\s*7|mag\s*7|mag7", article_text, re.I):
         companies = enrich_mag7(companies)
 

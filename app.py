@@ -162,7 +162,9 @@ def page_analyze() -> None:
 
     if st.button("Analyze", type="primary", use_container_width=True):
         try:
-            with st.spinner("Reading content and running analysis..."):
+            with st.spinner(
+                "Reading content and running analysis (may take 2–5 minutes)..."
+            ):
                 if input_mode == "Link (URL)":
                     if not url.strip():
                         st.error("Please enter a URL.")

@@ -22,7 +22,8 @@ Rules:
 7. Set article_date to YYYY-MM-DD when the publish date appears in the article; otherwise leave empty.
 8. Be conservative with ratings when evidence is weak, promotional, or macro-only.
 9. Do not invent facts, prices, or events not supported by the article.
-10. Do NOT produce an overall article-level buy/sell rating — only per-stock opinions in company_opinions."""
+10. Do NOT produce an overall article-level buy/sell rating — only per-stock opinions in company_opinions.
+11. Limit company_opinions to the 8–12 public tickers most central to the article (skip peripheral mentions)."""
 
 USER_PROMPT_TEMPLATE = """Analyze this article/newsletter for public stock implications.
 
