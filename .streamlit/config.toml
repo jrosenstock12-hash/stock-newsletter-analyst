@@ -1,10 +1,8 @@
 [server]
 headless = true
-port = 8503
 
 [browser]
 gatherUsageStats = false
-serverAddress = "localhost"
 
 [client]
 showErrorDetails = true

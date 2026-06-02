@@ -11,4 +11,4 @@ done
 
 source .venv/bin/activate
 echo "Starting at http://localhost:8503"
-exec streamlit run app.py
+exec streamlit run app.py --server.port 8503

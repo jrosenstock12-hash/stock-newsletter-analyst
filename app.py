@@ -275,7 +275,7 @@ def main() -> None:
         if key and key not in ("sk-...", "sk-your-key-here") and len(key) > 20:
             st.success("API key loaded")
         else:
-            st.error("API key missing — edit .env")
+            st.error("API key missing — add OPENAI_API_KEY in Streamlit Secrets")
         if st.button("Test OpenAI connection"):
             try:
                 with st.spinner("Testing..."):
@@ -301,5 +301,4 @@ def main() -> None:
         page_history()
 
 
-if __name__ == "__main__":
-    main()
+main()
