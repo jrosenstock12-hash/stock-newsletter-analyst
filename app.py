@@ -1,15 +1,20 @@
 import html
+from dataclasses import replace
+
 import streamlit as st
 
 from analyze.llm import analyze_content, rerun_analysis, test_openai_connection
 from config import apply_streamlit_secrets, get_openai_api_key
 from db.database import (
+    add_website,
     delete_analyses,
+    delete_website,
     get_analysis,
     init_db,
     list_analyses,
-    list_source_names,
+    list_filter_source_names,
     list_tickers,
+    list_websites,
 )
 from ingest.date import format_display_title
 from ingest.email import parse_eml_file, parse_pasted_content
@@ -455,6 +460,14 @@ def render_history_analysis_body(
 def page_analyze() -> None:
     st.header("Analyze a newsletter or article")
 
+    websites = list_websites()
+    if not websites:
+        st.warning("Add newsletter sources on the **Websites** tab first.")
+        return
+
+    source_names = [w["name"] for w in websites]
+    source_pick = st.selectbox("Source", source_names, key="analyze_source")
+
     input_mode = st.radio(
         "How do you want to add content?",
         [
@@ -531,6 +544,7 @@ def page_analyze() -> None:
                         return
                     ingest = parse_markdown_file(md_file.read())
 
+                ingest = replace(ingest, source_name=source_pick)
                 analysis, tickers, analysis_id = analyze_content(ingest)
 
             st.success(f"Saved as analysis #{analysis_id}")
@@ -550,11 +564,51 @@ def page_analyze() -> None:
             st.error(str(exc))
 
 
+def page_websites() -> None:
+    st.header("Newsletter sources")
+    st.caption("Manage publication names and homepages. The **Source** picker on Analyze uses this list.")
+
+    with st.form("add_website", clear_on_submit=True):
+        name_col, url_col = st.columns(2)
+        with name_col:
+            new_name = st.text_input("Name", placeholder="SemiAnalysis")
+        with url_col:
+            new_url = st.text_input("URL", placeholder="https://semianalysis.com")
+        if st.form_submit_button("Add source", type="primary"):
+            try:
+                add_website(new_name, new_url)
+                st.success(f"Added {new_name.strip()}.")
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+    rows = list_websites()
+    if not rows:
+        st.info("No sources yet.")
+        return
+
+    st.subheader(f"{len(rows)} sources")
+    for site in rows:
+        link_col, action_col = st.columns([8, 1], vertical_alignment="center")
+        with link_col:
+            safe_name = html.escape(site["name"])
+            safe_url = html.escape(site["url"])
+            st.markdown(
+                f"**{safe_name}** — "
+                f'<a href="{safe_url}" target="_blank" rel="noopener">{safe_url}</a>',
+                unsafe_allow_html=True,
+            )
+        with action_col:
+            if st.button("Delete", key=f"del_site_{site['id']}", type="secondary"):
+                delete_website(site["id"])
+                st.rerun()
+
+
 def page_history() -> None:
     st.header("Saved analyses")
     _init_history_confirm_state()
 
-    sources = list_source_names()
+    sources = list_filter_source_names()
     tickers_all = list_tickers()
 
     st.markdown(
@@ -700,11 +754,13 @@ def main() -> None:
         "summary with buy/hold/sell opinions by stock. Personal use only; not financial advice."
     )
 
-    tab_analyze, tab_history = st.tabs(["Analyze", "History"])
+    tab_analyze, tab_history, tab_websites = st.tabs(["Analyze", "History", "Websites"])
     with tab_analyze:
         page_analyze()
     with tab_history:
         page_history()
+    with tab_websites:
+        page_websites()
 
 
 main()

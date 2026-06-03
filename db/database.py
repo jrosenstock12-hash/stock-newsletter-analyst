@@ -43,6 +43,32 @@ def _migrate(conn: sqlite3.Connection) -> None:
             )
 
 
+DEFAULT_WEBSITES: list[tuple[str, str]] = [
+    ("Stratechery", "https://stratechery.com"),
+    ("Clouded Judgement", "https://cloudedjudgement.substack.com"),
+    ("Fabricated Knowledge", "https://www.fabricatedknowledge.com"),
+    ("Big Technology", "https://www.bigtechnology.com"),
+    ("Platformer", "https://www.platformer.news"),
+    ("Import AI", "https://importai.substack.com"),
+    ("SemiAnalysis", "https://semianalysis.com"),
+    ("The Diff", "https://www.thediff.co"),
+    ("Tae Kim Newsletter", "https://tanjimb.substack.com"),
+    ("Newcomer", "https://www.newcomer.co"),
+]
+
+
+def _seed_websites(conn: sqlite3.Connection) -> None:
+    count = conn.execute("SELECT COUNT(*) FROM websites").fetchone()[0]
+    if count:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    for name, url in DEFAULT_WEBSITES:
+        conn.execute(
+            "INSERT INTO websites (name, url, created_at) VALUES (?, ?, ?)",
+            (name, url, now),
+        )
+
+
 def init_db() -> None:
     with _connect() as conn:
         conn.execute(
@@ -61,7 +87,18 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS websites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                url TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
         _migrate(conn)
+        _seed_websites(conn)
         conn.commit()
 
 
@@ -213,6 +250,60 @@ def list_source_names() -> list[str]:
             """
         ).fetchall()
     return [row[0] for row in rows]
+
+
+def list_websites() -> list[dict[str, Any]]:
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, name, url, created_at FROM websites
+            ORDER BY name COLLATE NOCASE
+            """
+        ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "url": row["url"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def add_website(name: str, url: str) -> int:
+    name = name.strip()
+    url = url.strip()
+    if not name or not url:
+        raise ValueError("Name and URL are required.")
+    if not url.startswith(("http://", "https://")):
+        url = f"https://{url}"
+    with _connect() as conn:
+        try:
+            cursor = conn.execute(
+                """
+                INSERT INTO websites (name, url, created_at)
+                VALUES (?, ?, ?)
+                """,
+                (name, url, datetime.now(timezone.utc).isoformat()),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError as exc:
+            raise ValueError(f"A source named “{name}” already exists.") from exc
+        return int(cursor.lastrowid)
+
+
+def delete_website(website_id: int) -> bool:
+    with _connect() as conn:
+        cursor = conn.execute("DELETE FROM websites WHERE id = ?", (website_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def list_filter_source_names() -> list[str]:
+    names = {row["name"] for row in list_websites()}
+    names.update(list_source_names())
+    return sorted(names, key=str.lower)
 
 
 def list_tickers() -> list[str]:
