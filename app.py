@@ -174,6 +174,12 @@ def _history_meta_html(row: dict) -> str:
     )
 
 
+def _history_expander_label(row: dict) -> str:
+    date, title = _history_date_and_title(row)
+    label = f"{date} — {title}" if date else title
+    return label[:120] + ("…" if len(label) > 120 else "")
+
+
 def _render_history_header_row(row: dict, row_id: int, *, pending: bool) -> None:
     meta_col, tags_col, action_col = st.columns(
         [5.5, 4, 1.5], vertical_alignment="center"
@@ -268,12 +274,22 @@ def _render_confirm_panel(
 def _render_history_actions(row_id: int) -> None:
     btn_rerun, btn_del = st.columns(2, gap="small")
     with btn_rerun:
-        if st.button("Re-run", key=f"rerun_{row_id}", type="tertiary", use_container_width=True):
+        if st.button(
+            "Re-run",
+            key=f"rerun_{row_id}",
+            type="secondary",
+            use_container_width=True,
+        ):
             st.session_state.pending_rerun_id = row_id
             st.session_state.pending_delete_id = None
             st.rerun()
     with btn_del:
-        if st.button("Delete", key=f"delete_{row_id}", type="tertiary", use_container_width=True):
+        if st.button(
+            "Delete",
+            key=f"delete_{row_id}",
+            type="secondary",
+            use_container_width=True,
+        ):
             st.session_state.pending_delete_id = row_id
             st.session_state.pending_rerun_id = None
             st.rerun()
@@ -487,19 +503,17 @@ def page_history() -> None:
         """
         <style>
         div[data-testid="stSelectbox"] label { font-size: 0.8rem; }
-        div[data-testid="stVerticalBlockBorderWrapper"] {
+        div[data-testid="stExpander"] {
             margin-bottom: 0.35rem !important;
-            padding-top: 0.35rem !important;
-            padding-bottom: 0.35rem !important;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            gap: 0.35rem !important;
+        div[data-testid="stExpander"] details summary {
+            padding-top: 0.35rem;
+            padding-bottom: 0.35rem;
         }
-        div[data-testid="stHorizontalBlock"] div[data-testid="column"]:has(button) button {
-            padding: 0.15rem 0.45rem;
-            font-size: 0.75rem;
-            min-height: 0;
-            height: auto;
+        div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] {
+            padding-top: 0.25rem;
         }
         </style>
         """,
@@ -539,7 +553,7 @@ def page_history() -> None:
         )
         full = get_analysis(row_id)
 
-        with st.container(border=True):
+        with st.expander(_history_expander_label(row), expanded=False):
             _render_history_header_row(row, row_id, pending=pending)
 
             if st.session_state.pending_delete_id == row_id:
