@@ -20,6 +20,11 @@ KNOWN_PUBLIC = {
     "google": ("GOOGL", "Alphabet Inc."),
     "alphabet": ("GOOGL", "Alphabet Inc."),
     "amazon": ("AMZN", "Amazon.com Inc."),
+    "aws": ("AMZN", "Amazon.com Inc."),
+    "amazon web services": ("AMZN", "Amazon.com Inc."),
+    "azure": ("MSFT", "Microsoft Corporation"),
+    "google cloud": ("GOOGL", "Alphabet Inc."),
+    "gcp": ("GOOGL", "Alphabet Inc."),
     "meta": ("META", "Meta Platforms Inc."),
     "facebook": ("META", "Meta Platforms Inc."),
     "nvidia": ("NVDA", "NVIDIA Corporation"),
@@ -139,7 +144,7 @@ def known_companies_from_text(article_text: str) -> list[PublicCompany]:
     seen: set[str] = set()
     resolved: list[PublicCompany] = []
     lower = article_text.lower()
-    for key, known in KNOWN_PUBLIC.items():
+    for key, known in sorted(KNOWN_PUBLIC.items(), key=lambda kv: -len(kv[0])):
         if known is None:
             continue
         if re.search(rf"\b{re.escape(key)}\b", lower):
@@ -233,27 +238,6 @@ def extract_company_names_llm(client, model: str, article_text: str) -> list[str
     return names[:MAX_LLM_COMPANY_NAMES]
 
 
-def enrich_mag7(companies: list[PublicCompany]) -> list[PublicCompany]:
-    """If article references Mag 7, ensure all seven are in the list."""
-    mag7_names = [
-        ("AAPL", "Apple Inc."),
-        ("MSFT", "Microsoft Corporation"),
-        ("GOOGL", "Alphabet Inc."),
-        ("AMZN", "Amazon.com Inc."),
-        ("META", "Meta Platforms Inc."),
-        ("NVDA", "NVIDIA Corporation"),
-        ("TSLA", "Tesla Inc."),
-    ]
-    seen = {c.ticker for c in companies}
-    for ticker, name in mag7_names:
-        if ticker not in seen:
-            seen.add(ticker)
-            companies.append(
-                PublicCompany(name=name, ticker=ticker, source="mag7")
-            )
-    return companies
-
-
 def build_public_company_context(
     client,
     model: str,
@@ -269,26 +253,10 @@ def build_public_company_context(
         if ticker not in seen:
             names.append(ticker)
 
-    if re.search(r"magnificent\s*7|mag\s*7|mag7", article_text, re.I):
-        names.extend(
-            [
-                "Apple",
-                "Microsoft",
-                "Alphabet",
-                "Amazon",
-                "Meta",
-                "NVIDIA",
-                "Tesla",
-            ]
-        )
-
     for company in resolve_company_names(names):
         if company.ticker not in seen:
             seen.add(company.ticker)
             companies.append(company)
-
-    if re.search(r"magnificent\s*7|mag\s*7|mag7", article_text, re.I):
-        companies = enrich_mag7(companies)
 
     companies = [
         c
@@ -301,6 +269,12 @@ def build_public_company_context(
 
     companies = companies[:MAX_COMPANIES_FOR_ANALYSIS]
     lines = [c.to_prompt_line() for c in companies]
-    return companies, "Verified public listings (Yahoo Finance):\n" + "\n".join(
+    tickers_only = ", ".join(c.ticker for c in companies)
+    block = "Verified public listings (Yahoo Finance):\n" + "\n".join(
         f"- {line}" for line in lines
     )
+    block += (
+        f"\n\nONLY include company_opinions for these tickers "
+        f"(each must be named/discussed in the article): {tickers_only}"
+    )
+    return companies, block

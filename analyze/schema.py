@@ -10,15 +10,15 @@ class CompanyOpinion(BaseModel):
     confidence: Literal["low", "medium", "high"]
     article_says: str = Field(
         description=(
-            "What the author said about this stock: a full paragraph (5-8 sentences) "
-            "with specific claims, numbers, and comparisons. Only for companies the "
-            "article explicitly names or discusses — never write that a company was "
-            "not mentioned or only indirectly affected"
+            "Primary field: 8-12 sentences on what the author explicitly said about "
+            "this company — metrics, products, peer comparisons, quotes. Only if the "
+            "company is named/discussed in the article; never speculate on indirect "
+            "beneficiaries or write that a company was not mentioned"
         )
     )
     rationale: str = Field(
         description=(
-            "Buy/hold/sell/avoid opinion in 3-5 sentences tied to article_says"
+            "Brief 2-3 sentence buy/hold/sell/avoid opinion tied to article_says"
         )
     )
 

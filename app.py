@@ -144,16 +144,18 @@ def _history_date_and_title(row: dict) -> tuple[str, str]:
     return "", title
 
 
-def render_history_summary_line(row: dict) -> None:
-    date, article_title = _history_date_and_title(row)
-    source = _source_tag_html(row.get("source_name", ""))
+def _history_ticker_tags_html(row: dict) -> str:
     analysis = row.get("analysis", {})
     opinions = analysis.get("company_opinions", [])
-    tickers = _ticker_tags_html(
+    return _ticker_tags_html(
         company_opinions=opinions,
         tickers=None if opinions else row.get("detected_tickers", []),
     )
 
+
+def _history_meta_html(row: dict) -> str:
+    date, article_title = _history_date_and_title(row)
+    source = _source_tag_html(row.get("source_name", ""))
     date_html = (
         f'<span style="color:#94a3b8;white-space:nowrap;">{html.escape(date)}</span>'
         f'<span style="color:#64748b;"> · </span>'
@@ -164,19 +166,18 @@ def render_history_summary_line(row: dict) -> None:
         f'<span style="font-weight:600;color:#f1f5f9;">'
         f"{html.escape(article_title)}</span>"
     )
-
-    st.markdown(
-        f"""
-        <div style="display:flex;align-items:center;gap:0.45rem;width:100%;
-        min-width:0;overflow:hidden;">
-          <div style="flex-shrink:0;">{source}</div>
-          <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
-          white-space:nowrap;">{date_html}{title_html}</div>
-          <div style="flex-shrink:0;">{tickers}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    return (
+        f'<div style="display:flex;align-items:center;gap:0.45rem;min-width:0;">'
+        f'<div style="flex-shrink:0;">{source}</div>'
+        f"<div style=\"min-width:0;overflow:hidden;text-overflow:ellipsis;"
+        f'white-space:nowrap;">{date_html}{title_html}</div></div>'
     )
+
+
+def _history_expander_label(row: dict) -> str:
+    date, title = _history_date_and_title(row)
+    label = f"{date} — {title}" if date else title
+    return label[:120] + ("…" if len(label) > 120 else "")
 
 
 def _init_history_confirm_state() -> None:
@@ -284,10 +285,10 @@ def render_stocks_mentioned(company_opinions: list[dict]) -> None:
         )
         if co.get("article_says"):
             st.markdown("**What the author said**")
-            st.write(co["article_says"])
+            st.markdown(co["article_says"])
         if co.get("rationale"):
-            st.markdown("**Opinion**")
-            st.write(co["rationale"])
+            with st.expander("AI opinion (brief)", expanded=False):
+                st.write(co["rationale"])
         st.markdown("")
 
 
@@ -331,6 +332,36 @@ def render_analysis(
     render_stocks_mentioned(analysis.get("company_opinions", []))
 
     st.info(analysis.get("disclaimer", ""))
+
+
+def render_history_analysis_body(
+    analysis: dict,
+    source_label: str,
+    *,
+    clean_text: str | None = None,
+) -> None:
+    exec_summary = analysis.get("executive_summary", "")
+    detailed = analysis.get("detailed_summary") or analysis.get("summary", "")
+
+    if exec_summary:
+        st.markdown("### At a glance")
+        st.write(exec_summary)
+
+    st.markdown("### Detailed summary")
+    if detailed:
+        word_count = len(detailed.split())
+        st.caption(f"~{word_count} words · ~{max(3, min(5, word_count // 220))} min read")
+        st.write(detailed)
+    else:
+        st.write("No summary available.")
+
+    render_stocks_mentioned(analysis.get("company_opinions", []))
+    st.caption(f"Source detail: {source_label}")
+    st.info(analysis.get("disclaimer", ""))
+
+    if clean_text:
+        with st.expander("Original article", expanded=False):
+            st.text(clean_text[:120000])
 
 
 def page_analyze() -> None:
@@ -438,13 +469,23 @@ def page_history() -> None:
     sources = list_source_names()
     tickers_all = list_tickers()
 
-    filter_left, filter_right = st.columns(2)
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stSelectbox"] label {
+            font-size: 0.8rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    _spacer, filter_left, filter_right = st.columns([5, 1.4, 1.4])
     with filter_left:
         source_options = ["All sources"] + sources
-        source_pick = st.selectbox("Filter by source", source_options, key="hist_source")
+        source_pick = st.selectbox("Source", source_options, key="hist_source")
     with filter_right:
         ticker_options = ["All tickers"] + tickers_all
-        ticker_pick = st.selectbox("Filter by ticker", ticker_options, key="hist_ticker")
+        ticker_pick = st.selectbox("Ticker", ticker_options, key="hist_ticker")
 
     source_filter = None if source_pick == "All sources" else source_pick
     ticker_filter = None if ticker_pick == "All tickers" else ticker_pick
@@ -483,44 +524,46 @@ def page_history() -> None:
             st.session_state.pending_delete_id == row_id
             or st.session_state.pending_rerun_id == row_id
         )
+        full = get_analysis(row_id)
 
-        summary_col, action_col = st.columns([11.5, 1.2], vertical_alignment="center")
-        with summary_col:
-            render_history_summary_line(row)
-        with action_col:
-            if not pending:
-                _render_history_actions(row_id)
+        with st.expander(_history_expander_label(row), expanded=False):
+            meta_col, tags_col, action_col = st.columns(
+                [5.5, 4, 1.5], vertical_alignment="center"
+            )
+            with meta_col:
+                st.markdown(_history_meta_html(row), unsafe_allow_html=True)
+            with tags_col:
+                tag_html = _history_ticker_tags_html(row)
+                if tag_html:
+                    st.markdown(
+                        f'<div style="display:flex;justify-content:flex-end;'
+                        f'align-items:center;flex-wrap:wrap;gap:0.15rem;">'
+                        f"{tag_html}</div>",
+                        unsafe_allow_html=True,
+                    )
+            with action_col:
+                if not pending:
+                    _render_history_actions(row_id)
 
-        if st.session_state.pending_delete_id == row_id:
-            _render_confirm_panel(
-                kind="delete",
-                row_id=row_id,
-                title_snippet=_history_date_and_title(row)[1],
-            )
-        elif st.session_state.pending_rerun_id == row_id:
-            _render_confirm_panel(
-                kind="rerun",
-                row_id=row_id,
-                title_snippet=_history_date_and_title(row)[1],
-            )
+            if st.session_state.pending_delete_id == row_id:
+                _render_confirm_panel(
+                    kind="delete",
+                    row_id=row_id,
+                    title_snippet=_history_date_and_title(row)[1],
+                )
+            elif st.session_state.pending_rerun_id == row_id:
+                _render_confirm_panel(
+                    kind="rerun",
+                    row_id=row_id,
+                    title_snippet=_history_date_and_title(row)[1],
+                )
 
-        with st.expander("View analysis", expanded=False):
-            st.caption(
-                f"{row['created_at'][:19]} · {row['source_type']} · "
-                f"{row['source_label'][:120]}"
-            )
-            render_analysis(
+            st.caption(f"Saved {row['created_at'][:19]} UTC")
+            render_history_analysis_body(
                 row["analysis"],
-                row["detected_tickers"],
                 row["source_label"],
-                row.get("source_name", ""),
-                show_tags=False,
+                clean_text=full["clean_text"] if full else None,
             )
-
-            full = get_analysis(row_id)
-            if full:
-                with st.expander("Extracted text (for debugging)"):
-                    st.text(full["clean_text"][:8000])
 
         st.divider()
 

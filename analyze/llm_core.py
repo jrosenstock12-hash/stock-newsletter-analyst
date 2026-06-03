@@ -22,10 +22,12 @@ Rules:
 3. If a company is not named or discussed in the article, omit it entirely — never write
    "not mentioned" or speculate about indirect exposure.
 4. For each company_opinion (max 8 tickers):
-   - article_says: a full paragraph (5-8 sentences) summarizing what the author said about
-     this stock — include specific metrics, trends, and comparisons when present. Only use
-     2-3 sentences if the company is mentioned in passing.
-   - rationale: 3-5 sentences with buy/hold/sell/avoid and clear reasoning tied to article_says.
+   - article_says: the MOST IMPORTANT field — 8-12 sentences when the article discusses
+     the company substantively. Quote or paraphrase the author's specific claims, metrics,
+     product names (e.g. Bedrock, 800VDC), comparisons to peers, and forward-looking
+     statements. Use 3-4 sentences only for brief mentions. Never invent or pad with
+     generic industry commentary.
+   - rationale: 2-3 sentences with buy/hold/sell/avoid tied tightly to article_says.
 5. Write detailed_summary as a narrative within the target word count — not a bullet list.
 6. executive_summary is only 2-4 sentences for a quick skim.
 7. Set article_date to YYYY-MM-DD when the publish date appears in the article; otherwise leave empty.
@@ -176,13 +178,12 @@ def analyze_ingest(
     article_date = _resolve_article_date(ingest, parsed)
     parsed.article_date = article_date
 
-    verified = {c.ticker for c in public_companies}
+    allowed = {c.ticker.upper() for c in public_companies}
     parsed.company_opinions = filter_company_opinions(
-        ingest.text, list(parsed.company_opinions)
+        ingest.text,
+        list(parsed.company_opinions),
+        allowed_tickers=allowed,
     )
-    parsed.company_opinions = [
-        co for co in parsed.company_opinions if co.ticker in verified
-    ]
     mentioned_tickers = [
         co.ticker.upper() for co in parsed.company_opinions if co.ticker
     ]

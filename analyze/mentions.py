@@ -37,10 +37,29 @@ NOT_MENTIONED_RE = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+SPECULATIVE_RE = re.compile(
+    r"""
+    could\s+benefit\s+indirectly
+    | might\s+benefit\s+indirectly
+    | may\s+benefit\s+indirectly
+    | indirect(?:ly)?\s+beneficiary
+    | plausible\s+beneficiary
+    | potential\s+beneficiary
+    | without\s+(?:being\s+)?(?:named|mentioned|discussed)
+    | even\s+though\s+(?:it\s+)?was\s+not
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
 
 def opinion_claims_not_mentioned(opinion: CompanyOpinion) -> bool:
     combined = f"{opinion.article_says} {opinion.rationale}"
     return bool(NOT_MENTIONED_RE.search(combined))
+
+
+def opinion_is_speculative(opinion: CompanyOpinion) -> bool:
+    combined = f"{opinion.article_says} {opinion.rationale}"
+    return bool(SPECULATIVE_RE.search(combined))
 
 
 def _significant_name_tokens(company_name: str) -> list[str]:
@@ -108,17 +127,55 @@ def company_mentioned_in_article(
     return False
 
 
+def article_says_references_company(opinion: CompanyOpinion) -> bool:
+    """article_says should discuss the company by name, not infer from thin air."""
+    blob = f"{opinion.article_says} {opinion.company_name}".lower()
+    upper = opinion.ticker.upper()
+    if upper and upper in opinion.article_says.upper():
+        return True
+    for name in _known_names_for_ticker(upper):
+        if re.search(rf"\b{re.escape(name)}\b", blob):
+            return True
+    for token in _significant_name_tokens(opinion.company_name):
+        if len(token) >= 4 and re.search(rf"\b{re.escape(token.lower())}\b", blob):
+            return True
+    return False
+
+
+def dedupe_company_opinions(
+    opinions: list[CompanyOpinion],
+) -> list[CompanyOpinion]:
+    seen: set[str] = set()
+    kept: list[CompanyOpinion] = []
+    for opinion in opinions:
+        key = opinion.ticker.upper().strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        kept.append(opinion)
+    return kept
+
+
 def filter_company_opinions(
     article_text: str,
     opinions: list[CompanyOpinion],
+    *,
+    allowed_tickers: set[str] | None = None,
 ) -> list[CompanyOpinion]:
     kept: list[CompanyOpinion] = []
     for opinion in opinions:
+        ticker = opinion.ticker.upper().strip()
+        if allowed_tickers is not None and ticker not in allowed_tickers:
+            continue
         if opinion_claims_not_mentioned(opinion):
+            continue
+        if opinion_is_speculative(opinion):
             continue
         if not company_mentioned_in_article(
             article_text, opinion.ticker, opinion.company_name
         ):
             continue
+        if not article_says_references_company(opinion):
+            continue
         kept.append(opinion)
-    return kept
+    return dedupe_company_opinions(kept)
