@@ -2,7 +2,14 @@ import streamlit as st
 
 from analyze.llm import analyze_content, test_openai_connection
 from config import apply_streamlit_secrets, get_openai_api_key
-from db.database import delete_analyses, get_analysis, init_db, list_analyses
+from db.database import (
+    delete_analyses,
+    get_analysis,
+    init_db,
+    list_analyses,
+    list_source_names,
+    list_tickers,
+)
 from ingest.date import format_display_title
 from ingest.email import parse_eml_file, parse_pasted_content
 from ingest.markdown import parse_markdown_file
@@ -29,9 +36,38 @@ def ticker_links(tickers: list[str]) -> str:
     if not tickers:
         return ""
     links = [
-        f"[{t}]({yahoo_quote_url(t)})" for t in tickers if t and t.strip()
+        f"[{t.upper()}]({yahoo_quote_url(t)})" for t in tickers if t and t.strip()
     ]
     return ", ".join(links)
+
+
+def render_source_tag(source_name: str) -> None:
+    if not source_name:
+        return
+    st.markdown(
+        f'<span style="display:inline-block;background:#1e3a5f;color:#93c5fd;'
+        f"border:1px solid #3b82f6;border-radius:999px;padding:0.15rem 0.65rem;"
+        f'font-size:0.85rem;font-weight:600;margin-right:0.35rem;">'
+        f"{source_name}</span>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_ticker_tags(tickers: list[str]) -> None:
+    if not tickers:
+        return
+    tags = []
+    for t in tickers:
+        sym = t.upper()
+        yahoo = yahoo_quote_url(sym)
+        tags.append(
+            f'<a href="{yahoo}" target="_blank" style="display:inline-block;'
+            f"background:#14532d;color:#86efac;border:1px solid #22c55e;"
+            f'border-radius:999px;padding:0.15rem 0.55rem;font-size:0.8rem;'
+            f'font-weight:600;margin:0.15rem 0.25rem 0.15rem 0;text-decoration:none;">'
+            f"{sym}</a>"
+        )
+    st.markdown("".join(tags), unsafe_allow_html=True)
 
 
 def display_title(analysis: dict, fallback_title: str = "Analysis") -> str:
@@ -42,15 +78,15 @@ def display_title(analysis: dict, fallback_title: str = "Analysis") -> str:
 
 def history_expander_label(row: dict) -> str:
     analysis = row["analysis"]
-    title = row["title"][:70]
-    tickers = row.get("detected_tickers") or []
+    title = row["title"][:55]
+    source = row.get("source_name") or "Unknown"
     ratings = []
     for co in analysis.get("company_opinions", []):
         ratings.append(f"{co.get('ticker', '?')}:{co.get('rating', 'hold').upper()}")
     rating_part = ", ".join(ratings[:4]) if ratings else "—"
     if len(ratings) > 4:
         rating_part += "…"
-    return f"#{row['id']} · {title} · {rating_part}"
+    return f"#{row['id']} · {source} · {title} · {rating_part}"
 
 
 def render_stocks_mentioned(company_opinions: list[dict]) -> None:
@@ -80,12 +116,20 @@ def render_stocks_mentioned(company_opinions: list[dict]) -> None:
         st.markdown("")
 
 
-def render_analysis(analysis: dict, tickers: list[str], source_label: str) -> None:
+def render_analysis(
+    analysis: dict,
+    tickers: list[str],
+    source_label: str,
+    source_name: str = "",
+) -> None:
     st.subheader(display_title(analysis))
-    st.caption(f"Source: {source_label}")
-
-    if tickers:
-        st.markdown("**Tickers:** " + ticker_links(tickers), unsafe_allow_html=True)
+    tag_col1, tag_col2 = st.columns([1, 3])
+    with tag_col1:
+        if source_name:
+            render_source_tag(source_name)
+    with tag_col2:
+        render_ticker_tags(tickers)
+    st.caption(f"Source detail: {source_label}")
 
     exec_summary = analysis.get("executive_summary", "")
     detailed = analysis.get("detailed_summary") or analysis.get("summary", "")
@@ -193,6 +237,7 @@ def page_analyze() -> None:
                 analysis.model_dump(),
                 tickers,
                 ingest.source_label,
+                ingest.source_name,
             )
         except Exception as exc:
             st.error(str(exc))
@@ -200,14 +245,43 @@ def page_analyze() -> None:
 
 def page_history() -> None:
     st.header("Saved analyses")
-    rows = list_analyses(limit=100)
+
+    sources = list_source_names()
+    tickers_all = list_tickers()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        source_options = ["All sources"] + sources
+        source_pick = st.selectbox("Filter by source", source_options, key="hist_source")
+    with col2:
+        ticker_options = ["All tickers"] + tickers_all
+        ticker_pick = st.selectbox("Filter by ticker", ticker_options, key="hist_ticker")
+
+    source_filter = None if source_pick == "All sources" else source_pick
+    ticker_filter = None if ticker_pick == "All tickers" else ticker_pick
+
+    rows = list_analyses(
+        limit=100,
+        source_name=source_filter,
+        ticker=ticker_filter,
+    )
 
     if not rows:
-        st.info("No saved analyses yet. Run your first analysis on the Analyze tab.")
+        if source_filter or ticker_filter:
+            st.info("No analyses match these filters.")
+        else:
+            st.info("No saved analyses yet. Run your first analysis on the Analyze tab.")
         return
+
+    st.caption(f"Showing {len(rows)} saved analyses")
 
     for row in rows:
         with st.expander(history_expander_label(row)):
+            tag_row1, tag_row2 = st.columns([1, 3])
+            with tag_row1:
+                render_source_tag(row.get("source_name", ""))
+            with tag_row2:
+                render_ticker_tags(row.get("detected_tickers", []))
             st.caption(
                 f"{row['created_at'][:19]} · {row['source_type']} · "
                 f"{row['source_label'][:120]}"
@@ -216,6 +290,7 @@ def page_history() -> None:
                 row["analysis"],
                 row["detected_tickers"],
                 row["source_label"],
+                row.get("source_name", ""),
             )
 
             if st.button("Delete", key=f"delete_{row['id']}"):

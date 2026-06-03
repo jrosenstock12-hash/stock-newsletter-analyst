@@ -8,3 +8,4 @@ class IngestResult:
     source_type: str
     source_label: str
     article_date: str = ""
+    source_name: str = ""

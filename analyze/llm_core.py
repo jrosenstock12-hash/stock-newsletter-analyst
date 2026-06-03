@@ -7,6 +7,7 @@ from config import get_openai_api_key, get_openai_model
 from db.database import save_analysis
 from ingest.date import format_display_title, normalize_date
 from ingest.models import IngestResult
+from ingest.source import finalize_ingest
 
 SYSTEM_PROMPT = """You are a financial research assistant analyzing newsletters and articles for public stock implications.
 
@@ -113,6 +114,7 @@ def _resolve_article_date(ingest: IngestResult, parsed: StockAnalysis) -> str:
 
 
 def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]:
+    ingest = finalize_ingest(ingest)
     tickers = detect_tickers(ingest.text)
     client = _make_client()
     model = get_openai_model()
@@ -188,6 +190,7 @@ def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]
     analysis_id = save_analysis(
         source_type=ingest.source_type,
         source_label=ingest.source_label,
+        source_name=ingest.source_name,
         title=display_title,
         clean_text=ingest.text,
         detected_tickers=all_tickers,
@@ -204,6 +207,7 @@ def analyze_ingest_dict(job: dict) -> dict:
         source_type=job["source_type"],
         source_label=job["source_label"],
         article_date=job.get("article_date", ""),
+        source_name=job.get("source_name", ""),
     )
     analysis, tickers, analysis_id = analyze_ingest(ingest)
     return {

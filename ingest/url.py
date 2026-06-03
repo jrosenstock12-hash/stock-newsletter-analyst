@@ -9,6 +9,7 @@ from config import USER_AGENT
 from ingest.clean import clean_newsletter_text
 from ingest.date import normalize_date
 from ingest.models import IngestResult
+from ingest.source import finalize_ingest
 
 TRACKING_QUERY_PREFIXES = ("_gl", "utm_", "fbclid", "gclid", "mc_", "ref")
 
@@ -140,10 +141,12 @@ def fetch_url(url: str) -> IngestResult:
     if metadata and metadata.date:
         article_date = normalize_date(metadata.date)
 
-    return IngestResult(
-        title=title,
-        text=text,
-        source_type="url",
-        source_label=url,
-        article_date=article_date,
+    return finalize_ingest(
+        IngestResult(
+            title=title,
+            text=text,
+            source_type="url",
+            source_label=url,
+            article_date=article_date,
+        )
     )

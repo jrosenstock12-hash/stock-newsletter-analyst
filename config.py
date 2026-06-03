@@ -24,6 +24,7 @@ DATA_DIR.mkdir(exist_ok=True)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 DATABASE_PATH = os.getenv("DATABASE_PATH", str(DATA_DIR / "analyses.db"))
+Path(DATABASE_PATH).parent.mkdir(parents=True, exist_ok=True)
 
 
 def reload_env() -> None:

@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from ingest.clean import clean_newsletter_text
 from ingest.date import detect_date_in_text, parse_email_date_header
 from ingest.models import IngestResult
+from ingest.source import finalize_ingest
 from ingest.title import detect_title
 
 
@@ -35,12 +36,14 @@ def parse_pasted_content(content: str, title: str = "") -> IngestResult:
 
     resolved_title = title.strip() or detect_title(content)
 
-    return IngestResult(
-        title=resolved_title,
-        text=text,
-        source_type="paste",
-        source_label="pasted content",
-        article_date=detect_date_in_text(text),
+    return finalize_ingest(
+        IngestResult(
+            title=resolved_title,
+            text=text,
+            source_type="paste",
+            source_label="pasted content",
+            article_date=detect_date_in_text(text),
+        )
     )
 
 
@@ -77,12 +80,14 @@ def parse_eml_file(file_bytes: bytes) -> IngestResult:
     if len(text) < 100:
         raise ValueError("Email body is too short after cleaning.")
 
-    return IngestResult(
-        title=subject,
-        text=text,
-        source_type="email",
-        source_label=msg.get("From", "uploaded .eml"),
-        article_date=parse_email_date_header(msg.get("Date")),
+    return finalize_ingest(
+        IngestResult(
+            title=subject,
+            text=text,
+            source_type="email",
+            source_label=msg.get("From", "uploaded .eml"),
+            article_date=parse_email_date_header(msg.get("Date")),
+        )
     )
 
 

@@ -90,6 +90,7 @@ def analyze_content(
         "source_type": ingest.source_type,
         "source_label": ingest.source_label,
         "article_date": ingest.article_date,
+        "source_name": ingest.source_name,
     }
 
     if _on_streamlit_cloud():

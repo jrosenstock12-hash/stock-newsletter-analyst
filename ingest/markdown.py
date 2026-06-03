@@ -3,6 +3,7 @@ import re
 from ingest.clean import clean_newsletter_text
 from ingest.date import detect_date_in_text, normalize_date
 from ingest.models import IngestResult
+from ingest.source import finalize_ingest
 
 SOURCE_URL_RE = re.compile(r"^Source URL:\s*(https?://\S+)\s*$", re.MULTILINE | re.IGNORECASE)
 TITLE_RE = re.compile(r"^Title:\s*(.+?)\s*$", re.MULTILINE | re.IGNORECASE)
@@ -51,12 +52,14 @@ def parse_markdown_content(content: str, fallback_title: str = "") -> IngestResu
     if not article_date:
         article_date = detect_date_in_text(text)
 
-    return IngestResult(
-        title=title or "Markdown newsletter",
-        text=text,
-        source_type="paste",
-        source_label=source_url or "uploaded markdown",
-        article_date=article_date,
+    return finalize_ingest(
+        IngestResult(
+            title=title or "Markdown newsletter",
+            text=text,
+            source_type="paste",
+            source_label=source_url or "uploaded markdown",
+            article_date=article_date,
+        )
     )
 
 
