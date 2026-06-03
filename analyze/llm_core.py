@@ -176,11 +176,9 @@ def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]
         for co in parsed.company_opinions
         if co.ticker in verified or co.ticker in tickers
     ]
-    bogus = {"USAGE", "THE", "AND", "FOR", "AI", "GDP", "CPI", "FED", "SEC"}
-    all_tickers = [t for t in all_tickers if t not in bogus]
-    for co in parsed.company_opinions:
-        if co.ticker and co.ticker not in all_tickers:
-            all_tickers.append(co.ticker)
+    mentioned_tickers = [
+        co.ticker.upper() for co in parsed.company_opinions if co.ticker
+    ]
 
     display_title = format_display_title(
         parsed.title or ingest.title,
@@ -193,11 +191,11 @@ def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]
         source_name=ingest.source_name,
         title=display_title,
         clean_text=ingest.text,
-        detected_tickers=all_tickers,
+        detected_tickers=mentioned_tickers,
         analysis=parsed.model_dump(),
     )
 
-    return parsed, all_tickers, analysis_id
+    return parsed, mentioned_tickers, analysis_id
 
 
 def analyze_ingest_dict(job: dict) -> dict:

@@ -65,6 +65,18 @@ def init_db() -> None:
         conn.commit()
 
 
+def tickers_from_analysis(analysis: dict[str, Any]) -> list[str]:
+    """Tickers shown in Stocks Mentioned (company_opinions only)."""
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for co in analysis.get("company_opinions", []):
+        t = str(co.get("ticker", "")).strip().upper()
+        if t and t not in seen:
+            seen.add(t)
+            ordered.append(t)
+    return ordered
+
+
 def save_analysis(
     *,
     source_type: str,
@@ -100,11 +112,7 @@ def save_analysis(
 
 def _row_to_summary(row: sqlite3.Row) -> dict[str, Any]:
     analysis = json.loads(row["analysis_json"])
-    tickers = json.loads(row["detected_tickers"])
-    for co in analysis.get("company_opinions", []):
-        t = co.get("ticker")
-        if t and t not in tickers:
-            tickers.append(t)
+    tickers = tickers_from_analysis(analysis)
     return {
         "id": row["id"],
         "created_at": row["created_at"],
@@ -136,10 +144,8 @@ def list_analyses(
         params.append(source_name)
     if ticker:
         ticker = ticker.upper()
-        clauses.append(
-            "(detected_tickers LIKE ? OR analysis_json LIKE ?)"
-        )
-        params.extend([f'%"{ticker}"%', f'%"ticker": "{ticker}"%'])
+        clauses.append("analysis_json LIKE ?")
+        params.append(f'%"ticker": "{ticker}"%')
 
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
@@ -149,7 +155,10 @@ def list_analyses(
     with _connect() as conn:
         rows = conn.execute(query, params).fetchall()
 
-    return [_row_to_summary(row) for row in rows]
+    results = [_row_to_summary(row) for row in rows]
+    if ticker:
+        results = [r for r in results if ticker in r["detected_tickers"]]
+    return results
 
 
 def list_source_names() -> list[str]:
@@ -166,26 +175,14 @@ def list_source_names() -> list[str]:
 
 def list_tickers() -> list[str]:
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT detected_tickers, analysis_json FROM analyses"
-        ).fetchall()
+        rows = conn.execute("SELECT analysis_json FROM analyses").fetchall()
 
     seen: set[str] = set()
-    ordered: list[str] = []
     for row in rows:
-        for raw in (row["detected_tickers"],):
-            for t in json.loads(raw):
-                t = str(t).upper()
-                if t and t not in seen:
-                    seen.add(t)
-                    ordered.append(t)
         analysis = json.loads(row["analysis_json"])
-        for co in analysis.get("company_opinions", []):
-            t = str(co.get("ticker", "")).upper()
-            if t and t not in seen:
-                seen.add(t)
-                ordered.append(t)
-    return sorted(ordered)
+        for t in tickers_from_analysis(analysis):
+            seen.add(t)
+    return sorted(seen)
 
 
 def delete_analyses(analysis_ids: list[int]) -> int:
@@ -211,6 +208,7 @@ def get_analysis(analysis_id: int) -> dict[str, Any] | None:
     if not row:
         return None
 
+    analysis = json.loads(row["analysis_json"])
     return {
         "id": row["id"],
         "created_at": row["created_at"],
@@ -219,6 +217,6 @@ def get_analysis(analysis_id: int) -> dict[str, Any] | None:
         "source_name": row["source_name"] or "",
         "title": row["title"],
         "clean_text": row["clean_text"],
-        "detected_tickers": json.loads(row["detected_tickers"]),
-        "analysis": json.loads(row["analysis_json"]),
+        "detected_tickers": tickers_from_analysis(analysis),
+        "analysis": analysis,
     }

@@ -233,9 +233,15 @@ def page_analyze() -> None:
                 analysis, tickers, analysis_id = analyze_content(ingest)
 
             st.success(f"Saved as analysis #{analysis_id}")
+            analysis_dict = analysis.model_dump()
+            shown_tickers = [
+                co["ticker"]
+                for co in analysis_dict.get("company_opinions", [])
+                if co.get("ticker")
+            ]
             render_analysis(
-                analysis.model_dump(),
-                tickers,
+                analysis_dict,
+                shown_tickers,
                 ingest.source_label,
                 ingest.source_name,
             )
