@@ -14,7 +14,7 @@ from db.database import (
     list_analyses,
     list_filter_source_names,
     list_tickers,
-    list_websites,
+    update_analysis_source_name,
 )
 from ingest.date import format_display_title
 from ingest.email import parse_eml_file, parse_pasted_content
@@ -256,6 +256,14 @@ def _init_history_confirm_state() -> None:
         st.session_state.pending_delete_id = None
     if "pending_rerun_id" not in st.session_state:
         st.session_state.pending_rerun_id = None
+    if "pending_edit_source_id" not in st.session_state:
+        st.session_state.pending_edit_source_id = None
+
+
+def _clear_pending_history_actions() -> None:
+    st.session_state.pending_delete_id = None
+    st.session_state.pending_rerun_id = None
+    st.session_state.pending_edit_source_id = None
 
 
 def _render_confirm_panel(
@@ -312,13 +320,58 @@ def _render_confirm_panel(
                     return
             else:
                 delete_analyses([row_id])
-            st.session_state.pending_delete_id = None
-            st.session_state.pending_rerun_id = None
+            _clear_pending_history_actions()
             st.rerun()
     with no_col:
         if st.button("Cancel", key=f"no_{kind}_{row_id}", use_container_width=True):
-            st.session_state.pending_delete_id = None
-            st.session_state.pending_rerun_id = None
+            _clear_pending_history_actions()
+            st.rerun()
+
+
+def _render_edit_source_panel(row_id: int, *, current_source: str) -> None:
+    websites = list_websites()
+    if not websites:
+        st.warning("Add sources on the **Websites** tab first.")
+        return
+
+    names = [w["name"] for w in websites]
+    default_idx = names.index(current_source) if current_source in names else 0
+
+    st.markdown(
+        """
+        <div style="background:#1e293b;border:1px solid #475569;border-radius:10px;
+        padding:0.5rem 0.7rem;margin-bottom:0.35rem;">
+          <div style="font-weight:600;font-size:0.84rem;color:#f8fafc;">
+            Edit source tag
+          </div>
+          <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.15rem;">
+            Updates the source label on this saved analysis (no re-run).
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    pick_col, save_col, cancel_col = st.columns([6, 1, 1], vertical_alignment="bottom")
+    with pick_col:
+        new_source = st.selectbox(
+            "Source",
+            names,
+            index=default_idx,
+            key=f"edit_source_pick_{row_id}",
+            label_visibility="collapsed",
+        )
+    with save_col:
+        if st.button("Save", key=f"save_source_{row_id}", type="primary", use_container_width=True):
+            try:
+                update_analysis_source_name(row_id, new_source)
+            except ValueError as exc:
+                st.error(str(exc))
+                return
+            _clear_pending_history_actions()
+            st.rerun()
+    with cancel_col:
+        if st.button("Cancel", key=f"cancel_source_{row_id}", use_container_width=True):
+            _clear_pending_history_actions()
             st.rerun()
 
 
@@ -332,6 +385,17 @@ def _render_history_actions(row_id: int) -> None:
         ):
             st.session_state.pending_rerun_id = row_id
             st.session_state.pending_delete_id = None
+            st.session_state.pending_edit_source_id = None
+            st.rerun()
+        if st.button(
+            "Edit source",
+            key=f"edit_source_{row_id}",
+            type="secondary",
+            use_container_width=True,
+        ):
+            st.session_state.pending_edit_source_id = row_id
+            st.session_state.pending_delete_id = None
+            st.session_state.pending_rerun_id = None
             st.rerun()
         if st.button(
             "Delete",
@@ -341,6 +405,7 @@ def _render_history_actions(row_id: int) -> None:
         ):
             st.session_state.pending_delete_id = row_id
             st.session_state.pending_rerun_id = None
+            st.session_state.pending_edit_source_id = None
             st.rerun()
 
 
@@ -495,10 +560,16 @@ def page_analyze() -> None:
             "automated fetch — paste the article if the link returns a preview."
         )
     elif input_mode == "Paste email / newsletter":
+        clear_col, _ = st.columns([1, 5])
+        with clear_col:
+            if st.button("Clear paste", key="clear_paste", type="secondary"):
+                st.session_state.paste_newsletter = ""
+                st.rerun()
         pasted = st.text_area(
             "Paste the full email or newsletter body",
             height=320,
             placeholder="Copy the entire newsletter from your email client and paste here...",
+            key="paste_newsletter",
         )
         st.caption(
             "Title is detected automatically from the paste. "
@@ -696,6 +767,7 @@ def page_history() -> None:
         pending = (
             st.session_state.pending_delete_id == row_id
             or st.session_state.pending_rerun_id == row_id
+            or st.session_state.pending_edit_source_id == row_id
         )
         full = get_analysis(row_id)
 
@@ -713,6 +785,11 @@ def page_history() -> None:
                     kind="rerun",
                     row_id=row_id,
                     title_snippet=_history_date_and_title(row)[1],
+                )
+            elif st.session_state.pending_edit_source_id == row_id:
+                _render_edit_source_panel(
+                    row_id,
+                    current_source=row.get("source_name", ""),
                 )
 
             if expanded:

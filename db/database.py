@@ -189,6 +189,19 @@ def update_analysis(
     return analysis_id
 
 
+def update_analysis_source_name(analysis_id: int, source_name: str) -> bool:
+    source_name = source_name.strip()
+    if not source_name:
+        raise ValueError("Source name is required.")
+    with _connect() as conn:
+        cursor = conn.execute(
+            "UPDATE analyses SET source_name = ? WHERE id = ?",
+            (source_name, analysis_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
 def _row_to_summary(row: sqlite3.Row) -> dict[str, Any]:
     analysis = json.loads(row["analysis_json"])
     tickers = tickers_from_analysis(analysis)
