@@ -174,10 +174,24 @@ def _history_meta_html(row: dict) -> str:
     )
 
 
-def _history_expander_label(row: dict) -> str:
-    date, title = _history_date_and_title(row)
-    label = f"{date} — {title}" if date else title
-    return label[:120] + ("…" if len(label) > 120 else "")
+def _render_history_header_row(row: dict, row_id: int, *, pending: bool) -> None:
+    meta_col, tags_col, action_col = st.columns(
+        [5.5, 4, 1.5], vertical_alignment="center"
+    )
+    with meta_col:
+        st.markdown(_history_meta_html(row), unsafe_allow_html=True)
+    with tags_col:
+        tag_html = _history_ticker_tags_html(row)
+        if tag_html:
+            st.markdown(
+                f'<div style="display:flex;justify-content:flex-end;'
+                f'align-items:center;flex-wrap:wrap;gap:0.15rem;">'
+                f"{tag_html}</div>",
+                unsafe_allow_html=True,
+            )
+    with action_col:
+        if not pending:
+            _render_history_actions(row_id)
 
 
 def _init_history_confirm_state() -> None:
@@ -287,8 +301,8 @@ def render_stocks_mentioned(company_opinions: list[dict]) -> None:
             st.markdown("**What the author said**")
             st.markdown(co["article_says"])
         if co.get("rationale"):
-            with st.expander("AI opinion (brief)", expanded=False):
-                st.write(co["rationale"])
+            st.markdown("**Opinion**")
+            st.write(co["rationale"])
         st.markdown("")
 
 
@@ -472,14 +486,26 @@ def page_history() -> None:
     st.markdown(
         """
         <style>
-        div[data-testid="stSelectbox"] label {
-            font-size: 0.8rem;
+        div[data-testid="stSelectbox"] label { font-size: 0.8rem; }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            margin-bottom: 0.35rem !important;
+            padding-top: 0.35rem !important;
+            padding-bottom: 0.35rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            gap: 0.35rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] div[data-testid="column"]:has(button) button {
+            padding: 0.15rem 0.45rem;
+            font-size: 0.75rem;
+            min-height: 0;
+            height: auto;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-    _spacer, filter_left, filter_right = st.columns([5, 1.4, 1.4])
+    filter_left, filter_right, _ = st.columns([1.4, 1.4, 5])
     with filter_left:
         source_options = ["All sources"] + sources
         source_pick = st.selectbox("Source", source_options, key="hist_source")
@@ -504,19 +530,6 @@ def page_history() -> None:
         return
 
     st.caption(f"Showing {len(rows)} saved analyses")
-    st.markdown(
-        """
-        <style>
-        div[data-testid="stHorizontalBlock"] div[data-testid="column"]:has(button) button {
-            padding: 0.15rem 0.45rem;
-            font-size: 0.75rem;
-            min-height: 0;
-            height: auto;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
     for row in rows:
         row_id = row["id"]
@@ -526,24 +539,8 @@ def page_history() -> None:
         )
         full = get_analysis(row_id)
 
-        with st.expander(_history_expander_label(row), expanded=False):
-            meta_col, tags_col, action_col = st.columns(
-                [5.5, 4, 1.5], vertical_alignment="center"
-            )
-            with meta_col:
-                st.markdown(_history_meta_html(row), unsafe_allow_html=True)
-            with tags_col:
-                tag_html = _history_ticker_tags_html(row)
-                if tag_html:
-                    st.markdown(
-                        f'<div style="display:flex;justify-content:flex-end;'
-                        f'align-items:center;flex-wrap:wrap;gap:0.15rem;">'
-                        f"{tag_html}</div>",
-                        unsafe_allow_html=True,
-                    )
-            with action_col:
-                if not pending:
-                    _render_history_actions(row_id)
+        with st.container(border=True):
+            _render_history_header_row(row, row_id, pending=pending)
 
             if st.session_state.pending_delete_id == row_id:
                 _render_confirm_panel(
@@ -558,14 +555,11 @@ def page_history() -> None:
                     title_snippet=_history_date_and_title(row)[1],
                 )
 
-            st.caption(f"Saved {row['created_at'][:19]} UTC")
             render_history_analysis_body(
                 row["analysis"],
                 row["source_label"],
                 clean_text=full["clean_text"] if full else None,
             )
-
-        st.divider()
 
 
 def main() -> None:
