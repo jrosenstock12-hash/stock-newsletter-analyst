@@ -154,7 +154,7 @@ def _history_ticker_tags_html(row: dict) -> str:
 
 
 def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> None:
-    """Always-visible list row: source, date, title, colored tags, actions."""
+    """Always-visible list row: source + menu on line 1; date, title, tags on line 2."""
     date, article_title = _history_date_and_title(row)
     source = _source_tag_html(row.get("source_name", ""))
     tag_html = _history_ticker_tags_html(row)
@@ -169,26 +169,30 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> Non
         f"{html.escape(article_title)}</span>"
     )
     tags_block = (
-        f'<span style="flex-shrink:0;">{tag_html}</span>' if tag_html else ""
+        f'<span style="flex-shrink:0;margin-left:0.25rem;">{tag_html}</span>'
+        if tag_html
+        else ""
     )
 
-    meta_col, action_col = st.columns([11, 0.75], vertical_alignment="center")
-    with meta_col:
-        st.markdown(
-            f"""
-            <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;
-            min-width:0;width:100%;">
-              <span style="flex-shrink:0;">{source}</span>
-              <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;
-              white-space:nowrap;">{date_html}{title_html}</span>
-              {tags_block}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with action_col:
+    source_col, menu_col = st.columns([10, 0.75], vertical_alignment="center")
+    with source_col:
+        if source:
+            st.markdown(source, unsafe_allow_html=True)
+    with menu_col:
         if not pending:
             _render_history_actions(row_id)
+
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;
+        min-width:0;width:100%;margin-top:0.15rem;">
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap;">{date_html}{title_html}</span>
+          {tags_block}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _init_history_confirm_state() -> None:
@@ -514,6 +518,7 @@ def page_history() -> None:
             padding: 0.2rem 0.55rem;
             font-size: 1.15rem;
             line-height: 1;
+            float: right;
         }
         </style>
         """,
