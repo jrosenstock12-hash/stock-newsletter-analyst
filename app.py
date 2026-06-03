@@ -1,3 +1,4 @@
+import html
 import streamlit as st
 
 from analyze.llm import analyze_content, rerun_analysis, test_openai_connection
@@ -27,6 +28,14 @@ RATING_COLORS = {
     "avoid": "#6b7280",
 }
 
+# background, text, border for pill tags
+TICKER_TAG_STYLES: dict[str, tuple[str, str, str]] = {
+    "buy": ("#14532d", "#86efac", "#22c55e"),
+    "hold": ("#422006", "#fde047", "#ca8a04"),
+    "sell": ("#450a0a", "#fca5a5", "#dc2626"),
+    "avoid": ("#1f2937", "#9ca3af", "#6b7280"),
+}
+
 
 def yahoo_quote_url(ticker: str) -> str:
     return f"https://finance.yahoo.com/quote/{ticker.upper()}/"
@@ -41,33 +50,75 @@ def ticker_links(tickers: list[str]) -> str:
     return ", ".join(links)
 
 
-def render_source_tag(source_name: str) -> None:
+def _source_tag_html(source_name: str) -> str:
     if not source_name:
-        return
-    st.markdown(
+        return ""
+    name = html.escape(source_name)
+    return (
         f'<span style="display:inline-block;background:#1e3a5f;color:#93c5fd;'
-        f"border:1px solid #3b82f6;border-radius:999px;padding:0.15rem 0.65rem;"
-        f'font-size:0.85rem;font-weight:600;margin-right:0.35rem;">'
-        f"{source_name}</span>",
-        unsafe_allow_html=True,
+        f"border:1px solid #3b82f6;border-radius:999px;padding:0.12rem 0.55rem;"
+        f'font-size:0.78rem;font-weight:600;white-space:nowrap;">'
+        f"{name}</span>"
     )
 
 
-def render_ticker_tags(tickers: list[str]) -> None:
-    if not tickers:
-        return
+def _ticker_tag_entries(
+    *,
+    company_opinions: list[dict] | None = None,
+    tickers: list[str] | None = None,
+) -> list[tuple[str, str]]:
+    if company_opinions:
+        entries: list[tuple[str, str]] = []
+        for co in company_opinions:
+            t = str(co.get("ticker", "")).strip()
+            if t:
+                entries.append((t, str(co.get("rating", "hold")).lower()))
+        return entries
+    if tickers:
+        return [(t.strip(), "hold") for t in tickers if t and t.strip()]
+    return []
+
+
+def _ticker_tags_html(
+    *,
+    company_opinions: list[dict] | None = None,
+    tickers: list[str] | None = None,
+) -> str:
+    entries = _ticker_tag_entries(
+        company_opinions=company_opinions,
+        tickers=tickers,
+    )
+    if not entries:
+        return ""
     tags = []
-    for t in tickers:
-        sym = t.upper()
-        yahoo = yahoo_quote_url(sym)
+    for t, rating in entries:
+        bg, fg, border = TICKER_TAG_STYLES.get(rating, TICKER_TAG_STYLES["avoid"])
+        sym = html.escape(t.upper())
+        yahoo = html.escape(yahoo_quote_url(t))
         tags.append(
-            f'<a href="{yahoo}" target="_blank" style="display:inline-block;'
-            f"background:#14532d;color:#86efac;border:1px solid #22c55e;"
-            f'border-radius:999px;padding:0.15rem 0.55rem;font-size:0.8rem;'
-            f'font-weight:600;margin:0.15rem 0.25rem 0.15rem 0;text-decoration:none;">'
-            f"{sym}</a>"
+            f'<a href="{yahoo}" target="_blank" title="{html.escape(rating.upper())}" '
+            f'style="display:inline-block;background:{bg};color:{fg};'
+            f"border:1px solid {border};border-radius:999px;padding:0.12rem 0.5rem;"
+            f'font-size:0.75rem;font-weight:600;margin-left:0.2rem;text-decoration:none;'
+            f'white-space:nowrap;">{sym}</a>'
         )
-    st.markdown("".join(tags), unsafe_allow_html=True)
+    return "".join(tags)
+
+
+def render_source_tag(source_name: str) -> None:
+    markup = _source_tag_html(source_name)
+    if markup:
+        st.markdown(markup, unsafe_allow_html=True)
+
+
+def render_ticker_tags(
+    tickers: list[str] | None = None,
+    *,
+    company_opinions: list[dict] | None = None,
+) -> None:
+    markup = _ticker_tags_html(company_opinions=company_opinions, tickers=tickers)
+    if markup:
+        st.markdown(markup, unsafe_allow_html=True)
 
 
 def display_title(analysis: dict, fallback_title: str = "Analysis") -> str:
@@ -76,9 +127,56 @@ def display_title(analysis: dict, fallback_title: str = "Analysis") -> str:
     return format_display_title(title, article_date)
 
 
-def history_expander_label(row: dict) -> str:
-    title = row.get("title", "Analysis")[:90]
-    return f"#{row['id']} · {title}"
+def _history_date_and_title(row: dict) -> tuple[str, str]:
+    title = row.get("title", "Analysis")
+    analysis = row.get("analysis", {})
+    date = (analysis.get("article_date") or "").strip()
+
+    if " — " in title:
+        prefix, rest = title.split(" — ", 1)
+        if len(prefix) == 10 and prefix[4] == "-" and prefix[7] == "-":
+            return prefix, rest
+
+    if date and title.startswith(f"{date} — "):
+        return date, title[len(date) + 3 :]
+    if date:
+        return date, title
+    return "", title
+
+
+def render_history_summary_line(row: dict) -> None:
+    date, article_title = _history_date_and_title(row)
+    source = _source_tag_html(row.get("source_name", ""))
+    analysis = row.get("analysis", {})
+    opinions = analysis.get("company_opinions", [])
+    tickers = _ticker_tags_html(
+        company_opinions=opinions,
+        tickers=None if opinions else row.get("detected_tickers", []),
+    )
+
+    date_html = (
+        f'<span style="color:#94a3b8;white-space:nowrap;">{html.escape(date)}</span>'
+        f'<span style="color:#64748b;"> · </span>'
+        if date
+        else ""
+    )
+    title_html = (
+        f'<span style="font-weight:600;color:#f1f5f9;">'
+        f"{html.escape(article_title)}</span>"
+    )
+
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:0.45rem;width:100%;
+        min-width:0;overflow:hidden;">
+          <div style="flex-shrink:0;">{source}</div>
+          <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap;">{date_html}{title_html}</div>
+          <div style="flex-shrink:0;">{tickers}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _init_history_confirm_state() -> None:
@@ -88,51 +186,79 @@ def _init_history_confirm_state() -> None:
         st.session_state.pending_rerun_id = None
 
 
-def _render_history_actions(row_id: int) -> None:
-    pending_del = st.session_state.pending_delete_id == row_id
-    pending_rerun = st.session_state.pending_rerun_id == row_id
-
-    if pending_del:
-        st.warning(f"Delete **#{row_id}**?")
-        yes, no = st.columns(2)
-        with yes:
-            if st.button("Yes", key=f"yes_del_{row_id}", type="primary"):
-                delete_analyses([row_id])
-                st.session_state.pending_delete_id = None
-                st.rerun()
-        with no:
-            if st.button("No", key=f"no_del_{row_id}"):
-                st.session_state.pending_delete_id = None
-                st.rerun()
-        return
-
-    if pending_rerun:
-        st.warning(f"Re-run **#{row_id}**? (2–5 min)")
-        yes, no = st.columns(2)
-        with yes:
-            if st.button("Yes", key=f"yes_rerun_{row_id}", type="primary"):
+def _render_confirm_panel(
+    *,
+    kind: str,
+    row_id: int,
+    title_snippet: str,
+) -> None:
+    is_rerun = kind == "rerun"
+    accent = "#3b82f6" if is_rerun else "#ef4444"
+    bg = "#172554" if is_rerun else "#450a0a"
+    icon = "↻" if is_rerun else "✕"
+    heading = "Re-run this analysis?" if is_rerun else "Delete this analysis?"
+    detail = (
+        "Uses saved article text with your latest code (~2–5 min)."
+        if is_rerun
+        else "This cannot be undone."
+    )
+    info_col, yes_col, no_col = st.columns([9.5, 1.1, 1.1], vertical_alignment="center")
+    with info_col:
+        st.markdown(
+            f"""
+            <div style="background:{bg};border:1px solid {accent};border-radius:10px;
+            padding:0.5rem 0.7rem;">
+              <div style="font-weight:600;font-size:0.84rem;color:#f8fafc;">
+                <span style="color:{accent};margin-right:0.35rem;">{icon}</span>
+                {html.escape(heading)}
+              </div>
+              <div style="font-size:0.78rem;color:#e2e8f0;margin-top:0.12rem;
+              overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                {html.escape(title_snippet[:80])}
+              </div>
+              <div style="font-size:0.72rem;color:#94a3b8;margin-top:0.15rem;">
+                {html.escape(detail)}
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with yes_col:
+        label = "Re-run" if is_rerun else "Delete"
+        if st.button(
+            label,
+            key=f"yes_{kind}_{row_id}",
+            type="primary",
+            use_container_width=True,
+        ):
+            if is_rerun:
                 try:
-                    with st.spinner("Re-running..."):
+                    with st.spinner("Running..."):
                         rerun_analysis(row_id)
-                    st.session_state.pending_rerun_id = None
-                    st.success(f"Updated #{row_id}")
                 except Exception as exc:
                     st.error(str(exc))
-                st.rerun()
-        with no:
-            if st.button("No", key=f"no_rerun_{row_id}"):
-                st.session_state.pending_rerun_id = None
-                st.rerun()
-        return
+                    return
+            else:
+                delete_analyses([row_id])
+            st.session_state.pending_delete_id = None
+            st.session_state.pending_rerun_id = None
+            st.rerun()
+    with no_col:
+        if st.button("Cancel", key=f"no_{kind}_{row_id}", use_container_width=True):
+            st.session_state.pending_delete_id = None
+            st.session_state.pending_rerun_id = None
+            st.rerun()
 
-    btn_rerun, btn_del = st.columns(2)
+
+def _render_history_actions(row_id: int) -> None:
+    btn_rerun, btn_del = st.columns(2, gap="small")
     with btn_rerun:
-        if st.button("Re-run", key=f"rerun_{row_id}", use_container_width=True):
+        if st.button("Re-run", key=f"rerun_{row_id}", type="tertiary", use_container_width=True):
             st.session_state.pending_rerun_id = row_id
             st.session_state.pending_delete_id = None
             st.rerun()
     with btn_del:
-        if st.button("Delete", key=f"delete_{row_id}", use_container_width=True):
+        if st.button("Delete", key=f"delete_{row_id}", type="tertiary", use_container_width=True):
             st.session_state.pending_delete_id = row_id
             st.session_state.pending_rerun_id = None
             st.rerun()
@@ -180,7 +306,11 @@ def render_analysis(
             if source_name:
                 render_source_tag(source_name)
         with tag_col2:
-            render_ticker_tags(tickers)
+            opinions = analysis.get("company_opinions", [])
+            render_ticker_tags(
+                tickers=None if opinions else tickers,
+                company_opinions=opinions or None,
+            )
         st.caption(f"Source detail: {source_label}")
 
     exec_summary = analysis.get("executive_summary", "")
@@ -333,38 +463,64 @@ def page_history() -> None:
         return
 
     st.caption(f"Showing {len(rows)} saved analyses")
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stHorizontalBlock"] div[data-testid="column"]:has(button) button {
+            padding: 0.15rem 0.45rem;
+            font-size: 0.75rem;
+            min-height: 0;
+            height: auto;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     for row in rows:
         row_id = row["id"]
-        row_left, row_right = st.columns(2)
+        pending = (
+            st.session_state.pending_delete_id == row_id
+            or st.session_state.pending_rerun_id == row_id
+        )
 
-        with row_left:
-            tag_col1, tag_col2 = st.columns([1, 4])
-            with tag_col1:
-                render_source_tag(row.get("source_name", ""))
-            with tag_col2:
-                render_ticker_tags(row.get("detected_tickers", []))
+        summary_col, action_col = st.columns([11.5, 1.2], vertical_alignment="center")
+        with summary_col:
+            render_history_summary_line(row)
+        with action_col:
+            if not pending:
+                _render_history_actions(row_id)
 
-            with st.expander(history_expander_label(row)):
-                st.caption(
-                    f"{row['created_at'][:19]} · {row['source_type']} · "
-                    f"{row['source_label'][:120]}"
-                )
-                render_analysis(
-                    row["analysis"],
-                    row["detected_tickers"],
-                    row["source_label"],
-                    row.get("source_name", ""),
-                    show_tags=False,
-                )
+        if st.session_state.pending_delete_id == row_id:
+            _render_confirm_panel(
+                kind="delete",
+                row_id=row_id,
+                title_snippet=_history_date_and_title(row)[1],
+            )
+        elif st.session_state.pending_rerun_id == row_id:
+            _render_confirm_panel(
+                kind="rerun",
+                row_id=row_id,
+                title_snippet=_history_date_and_title(row)[1],
+            )
 
-                full = get_analysis(row_id)
-                if full:
-                    with st.expander("Extracted text (for debugging)"):
-                        st.text(full["clean_text"][:8000])
+        with st.expander("View analysis", expanded=False):
+            st.caption(
+                f"{row['created_at'][:19]} · {row['source_type']} · "
+                f"{row['source_label'][:120]}"
+            )
+            render_analysis(
+                row["analysis"],
+                row["detected_tickers"],
+                row["source_label"],
+                row.get("source_name", ""),
+                show_tags=False,
+            )
 
-        with row_right:
-            _render_history_actions(row_id)
+            full = get_analysis(row_id)
+            if full:
+                with st.expander("Extracted text (for debugging)"):
+                    st.text(full["clean_text"][:8000])
 
         st.divider()
 

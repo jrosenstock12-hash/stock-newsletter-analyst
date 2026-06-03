@@ -3,6 +3,7 @@ from typing import Any
 from openai import OpenAI
 
 from analyze.companies import build_public_company_context, target_summary_words
+from analyze.mentions import filter_company_opinions
 from analyze.schema import StockAnalysis
 from analyze.tickers import detect_tickers
 from config import get_openai_api_key, get_openai_model
@@ -15,13 +16,15 @@ SYSTEM_PROMPT = """You are a financial research assistant analyzing newsletters 
 
 Rules:
 1. Clearly separate what the ARTICLE states vs your AI opinion derived from that content.
-2. Identify ALL publicly traded companies relevant to the article — use the verified Yahoo Finance list provided even when the article omits ticker symbols.
-3. Provide a company_opinion (buy/hold/sell/avoid) for EACH verified public company that the article discusses or that is materially impacted by its thesis.
-4. For each company_opinion (max 8 tickers; omit tickers the article does not materially discuss):
+2. company_opinions may ONLY include companies the author explicitly names or clearly
+   discusses in the article text. Do NOT add tickers that are merely plausible beneficiaries,
+   competitors, suppliers, or industry peers unless the article itself discusses them.
+3. If a company is not named or discussed in the article, omit it entirely — never write
+   "not mentioned" or speculate about indirect exposure.
+4. For each company_opinion (max 8 tickers):
    - article_says: a full paragraph (5-8 sentences) summarizing what the author said about
-     this stock — include specific metrics, trends, Bedrock/TaaS/capacity details, and
-     comparisons to peers when present in the article. Only use 2-3 sentences if the
-     company is mentioned in passing.
+     this stock — include specific metrics, trends, and comparisons when present. Only use
+     2-3 sentences if the company is mentioned in passing.
    - rationale: 3-5 sentences with buy/hold/sell/avoid and clear reasoning tied to article_says.
 5. Write detailed_summary as a narrative within the target word count — not a bullet list.
 6. executive_summary is only 2-4 sentences for a quick skim.
@@ -29,8 +32,7 @@ Rules:
 8. Be conservative with ratings when evidence is weak, promotional, or macro-only.
 9. Do not invent facts, prices, or events not supported by the article.
 10. Do NOT produce an overall article-level buy/sell rating — only per-stock opinions in company_opinions.
-11. At most 8 company_opinions — only tickers the article materially discusses; do not
-    include peripheral hardware suppliers (e.g. NVIDIA) unless the author analyzes them."""
+11. Use the verified Yahoo Finance list only for companies the article actually discusses."""
 
 USER_PROMPT_TEMPLATE = """Analyze this article/newsletter for public stock implications.
 
@@ -50,7 +52,7 @@ Return structured analysis with:
 - article_date: YYYY-MM-DD if known
 - executive_summary: 2-4 sentences
 - detailed_summary: ~{target_words} word narrative (3-5 min read)
-- company_opinions: up to 8 entries; substantive article_says paragraphs per ticker"""
+- company_opinions: up to 8 entries; only companies named/discussed in the article"""
 
 
 def _make_client() -> OpenAI:
@@ -175,10 +177,11 @@ def analyze_ingest(
     parsed.article_date = article_date
 
     verified = {c.ticker for c in public_companies}
+    parsed.company_opinions = filter_company_opinions(
+        ingest.text, list(parsed.company_opinions)
+    )
     parsed.company_opinions = [
-        co
-        for co in parsed.company_opinions
-        if co.ticker in verified or co.ticker in tickers
+        co for co in parsed.company_opinions if co.ticker in verified
     ]
     mentioned_tickers = [
         co.ticker.upper() for co in parsed.company_opinions if co.ticker

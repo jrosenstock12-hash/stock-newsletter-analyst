@@ -11,8 +11,9 @@ class CompanyOpinion(BaseModel):
     article_says: str = Field(
         description=(
             "What the author said about this stock: a full paragraph (5-8 sentences) "
-            "with specific claims, numbers, and comparisons when the article discusses "
-            "the company; shorter only if barely mentioned"
+            "with specific claims, numbers, and comparisons. Only for companies the "
+            "article explicitly names or discusses — never write that a company was "
+            "not mentioned or only indirectly affected"
         )
     )
     rationale: str = Field(

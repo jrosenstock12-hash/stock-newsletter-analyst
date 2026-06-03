@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
 
+from analyze.mentions import company_mentioned_in_article
 from config import USER_AGENT
 
 YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
@@ -207,11 +208,11 @@ def extract_company_names_llm(client, model: str, article_text: str) -> list[str
             {
                 "role": "system",
                 "content": (
-                    "Extract every company, corporation, or brand name mentioned in the "
-                    "article that could be a publicly traded business. Include tech firms, "
-                    "banks, utilities, AI vendors, and index nicknames (e.g. Magnificent 7). "
-                    "Return JSON only: {\"companies\": [\"Name1\", \"Name2\"]}. "
-                    "No commentary."
+                    "Extract company, corporation, or brand names that appear explicitly "
+                    "in the article text and could be publicly traded. Do NOT infer "
+                    "companies that might be affected but are not named. Include index "
+                    "nicknames only if stated (e.g. Magnificent 7). "
+                    'Return JSON only: {"companies": ["Name1", "Name2"]}. No commentary.'
                 ),
             },
             {"role": "user", "content": excerpt},
@@ -288,6 +289,12 @@ def build_public_company_context(
 
     if re.search(r"magnificent\s*7|mag\s*7|mag7", article_text, re.I):
         companies = enrich_mag7(companies)
+
+    companies = [
+        c
+        for c in companies
+        if company_mentioned_in_article(article_text, c.ticker, c.name)
+    ]
 
     if not companies:
         return [], "No public companies resolved via Yahoo Finance."
