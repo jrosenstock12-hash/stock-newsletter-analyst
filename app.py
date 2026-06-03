@@ -322,7 +322,27 @@ def _render_confirm_panel(
             st.rerun()
 
 
+def _on_hist_action(row_id: int) -> None:
+    pick = st.session_state.get(f"hist_act_{row_id}", "⋮")
+    if pick == "Re-run":
+        st.session_state.pending_rerun_id = row_id
+        st.session_state.pending_delete_id = None
+    elif pick == "Delete":
+        st.session_state.pending_delete_id = row_id
+        st.session_state.pending_rerun_id = None
+    st.session_state[f"hist_act_{row_id}"] = "⋮"
+    st.rerun()
+
+
 def _render_history_actions(row_id: int) -> None:
+    st.selectbox(
+        "Action",
+        options=["⋮", "Re-run", "Delete"],
+        key=f"hist_act_{row_id}",
+        label_visibility="collapsed",
+        on_change=_on_hist_action,
+        args=(row_id,),
+    )
     with st.popover("⋮"):
         if st.button(
             "Re-run",
@@ -597,6 +617,36 @@ def page_history() -> None:
             }
             div[data-testid="stVerticalBlockBorderWrapper"] {
                 padding: 0.35rem 0.4rem 0.28rem !important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] > div > div[data-testid="stHorizontalBlock"] {
+                display: grid !important;
+                grid-template-columns: 1.75rem minmax(0, 1fr) 2.5rem !important;
+                column-gap: 0.3rem !important;
+                row-gap: 0 !important;
+                align-items: start !important;
+                flex-wrap: unset !important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] > div > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+                width: auto !important;
+                flex: unset !important;
+                min-width: 0 !important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] {
+                display: none !important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] {
+                display: block !important;
+                max-width: 2.5rem !important;
+                min-width: 2.5rem !important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                min-height: 1.75rem !important;
+                padding: 0 0.2rem !important;
+            }
+        }
+        @media (min-width: 641px) {
+            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] {
+                display: none !important;
             }
         }
         </style>
