@@ -144,12 +144,36 @@ def _history_date_and_title(row: dict) -> tuple[str, str]:
     return "", title
 
 
-def _history_ticker_tags_html(row: dict) -> str:
+def _history_source_inline_html(source_name: str) -> str:
+    if not source_name:
+        return ""
+    return (
+        f'<span style="color:#64748b;font-size:0.78rem;font-weight:600;'
+        f'white-space:nowrap;">{html.escape(source_name)}</span>'
+    )
+
+
+def _history_tickers_inline_html(row: dict) -> str:
     analysis = row.get("analysis", {})
     opinions = analysis.get("company_opinions", [])
-    return _ticker_tags_html(
+    entries = _ticker_tag_entries(
         company_opinions=opinions,
         tickers=None if opinions else row.get("detected_tickers", []),
+    )
+    if not entries:
+        return ""
+    parts = []
+    for t, rating in entries:
+        color = RATING_COLORS.get(rating, "#9ca3af")
+        sym = html.escape(t.upper())
+        yahoo = html.escape(yahoo_quote_url(t))
+        parts.append(
+            f'<a href="{yahoo}" target="_blank" title="{html.escape(rating.upper())}" '
+            f'style="color:{color};font-weight:600;font-size:0.78rem;'
+            f'text-decoration:none;white-space:nowrap;">{sym}</a>'
+        )
+    return (
+        f'<span style="white-space:nowrap;">{" · ".join(parts)}</span>'
     )
 
 
@@ -158,17 +182,24 @@ def _hist_open_key(row_id: int) -> str:
 
 
 def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> bool:
-    """Line 1: source + tags + menu. Line 2: chevron + date + title. Returns expanded."""
+    """Single compact row: chevron · source · tickers · date · title · menu."""
     open_key = _hist_open_key(row_id)
     if open_key not in st.session_state:
         st.session_state[open_key] = False
 
     date, article_title = _history_date_and_title(row)
-    source = _source_tag_html(row.get("source_name", ""))
-    tag_html = _history_ticker_tags_html(row)
+    source = _history_source_inline_html(row.get("source_name", ""))
+    tickers = _history_tickers_inline_html(row)
+    dot = '<span style="color:#475569;"> · </span>'
+
+    segments: list[str] = []
+    if source:
+        segments.append(source)
+    if tickers:
+        segments.append(tickers)
+
     date_html = (
         f'<span style="color:#94a3b8;white-space:nowrap;">{html.escape(date)}</span>'
-        f'<span style="color:#64748b;"> · </span>'
         if date
         else ""
     )
@@ -176,23 +207,16 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
         f'<span style="font-weight:600;color:#f1f5f9;">'
         f"{html.escape(article_title)}</span>"
     )
-    tags_inline = tag_html or ""
-    source_line = (
-        f'<div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">'
-        f"{source}{tags_inline}</div>"
-        if source or tags_inline
-        else ""
+    headline = date_html + (dot if date else "") + title_html if date else title_html
+    segments.append(
+        f'<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;'
+        f'white-space:nowrap;">{headline}</span>'
     )
+    row_html = dot.join(segments)
 
-    meta_col, menu_col = st.columns([10, 0.75], vertical_alignment="center")
-    with meta_col:
-        if source_line:
-            st.markdown(source_line, unsafe_allow_html=True)
-    with menu_col:
-        if not pending:
-            _render_history_actions(row_id)
-
-    chev_col, title_col = st.columns([0.45, 11.55], vertical_alignment="center")
+    chev_col, meta_col, menu_col = st.columns(
+        [0.42, 10.83, 0.75], vertical_alignment="center"
+    )
     with chev_col:
         chevron = "▾" if st.session_state[open_key] else "▸"
         if st.button(
@@ -203,17 +227,19 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
         ):
             st.session_state[open_key] = not st.session_state[open_key]
             st.rerun()
-    with title_col:
+    with meta_col:
         st.markdown(
             f"""
-            <div style="display:flex;align-items:center;min-width:0;width:100%;
-            margin-top:0.05rem;">
-              <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;
-              white-space:nowrap;">{date_html}{title_html}</span>
+            <div style="display:flex;align-items:center;gap:0;min-width:0;width:100%;
+            overflow:hidden;font-size:0.84rem;line-height:1.35;">
+              {row_html}
             </div>
             """,
             unsafe_allow_html=True,
         )
+    with menu_col:
+        if not pending:
+            _render_history_actions(row_id)
 
     return st.session_state[open_key]
 
@@ -520,8 +546,8 @@ def page_history() -> None:
         <style>
         div[data-testid="stSelectbox"] label { font-size: 0.8rem; }
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            margin-bottom: 0.35rem !important;
-            padding: 0.4rem 0.55rem 0.25rem !important;
+            margin-bottom: 0.3rem !important;
+            padding: 0.3rem 0.45rem 0.25rem !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
             gap: 0.25rem !important;
