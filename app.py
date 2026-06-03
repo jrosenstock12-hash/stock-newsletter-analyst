@@ -77,16 +77,65 @@ def display_title(analysis: dict, fallback_title: str = "Analysis") -> str:
 
 
 def history_expander_label(row: dict) -> str:
-    analysis = row["analysis"]
-    title = row["title"][:55]
-    source = row.get("source_name") or "Unknown"
-    ratings = []
-    for co in analysis.get("company_opinions", []):
-        ratings.append(f"{co.get('ticker', '?')}:{co.get('rating', 'hold').upper()}")
-    rating_part = ", ".join(ratings[:4]) if ratings else "—"
-    if len(ratings) > 4:
-        rating_part += "…"
-    return f"#{row['id']} · {source} · {title} · {rating_part}"
+    title = row.get("title", "Analysis")[:90]
+    return f"#{row['id']} · {title}"
+
+
+def _init_history_confirm_state() -> None:
+    if "pending_delete_id" not in st.session_state:
+        st.session_state.pending_delete_id = None
+    if "pending_rerun_id" not in st.session_state:
+        st.session_state.pending_rerun_id = None
+
+
+def _render_history_actions(row_id: int) -> None:
+    pending_del = st.session_state.pending_delete_id == row_id
+    pending_rerun = st.session_state.pending_rerun_id == row_id
+
+    if pending_del:
+        st.warning(f"Delete **#{row_id}**?")
+        yes, no = st.columns(2)
+        with yes:
+            if st.button("Yes", key=f"yes_del_{row_id}", type="primary"):
+                delete_analyses([row_id])
+                st.session_state.pending_delete_id = None
+                st.rerun()
+        with no:
+            if st.button("No", key=f"no_del_{row_id}"):
+                st.session_state.pending_delete_id = None
+                st.rerun()
+        return
+
+    if pending_rerun:
+        st.warning(f"Re-run **#{row_id}**? (2–5 min)")
+        yes, no = st.columns(2)
+        with yes:
+            if st.button("Yes", key=f"yes_rerun_{row_id}", type="primary"):
+                try:
+                    with st.spinner("Re-running..."):
+                        rerun_analysis(row_id)
+                    st.session_state.pending_rerun_id = None
+                    st.success(f"Updated #{row_id}")
+                except Exception as exc:
+                    st.error(str(exc))
+                st.rerun()
+        with no:
+            if st.button("No", key=f"no_rerun_{row_id}"):
+                st.session_state.pending_rerun_id = None
+                st.rerun()
+        return
+
+    btn_rerun, btn_del = st.columns(2)
+    with btn_rerun:
+        if st.button("Re-run", key=f"rerun_{row_id}", use_container_width=True):
+            st.session_state.pending_rerun_id = row_id
+            st.session_state.pending_delete_id = None
+            st.rerun()
+    with btn_del:
+        if st.button("Delete", key=f"delete_{row_id}", use_container_width=True):
+            st.session_state.pending_delete_id = row_id
+            st.session_state.pending_rerun_id = None
+            st.rerun()
 
 
 def render_stocks_mentioned(company_opinions: list[dict]) -> None:
@@ -121,15 +170,18 @@ def render_analysis(
     tickers: list[str],
     source_label: str,
     source_name: str = "",
+    *,
+    show_tags: bool = True,
 ) -> None:
     st.subheader(display_title(analysis))
-    tag_col1, tag_col2 = st.columns([1, 3])
-    with tag_col1:
-        if source_name:
-            render_source_tag(source_name)
-    with tag_col2:
-        render_ticker_tags(tickers)
-    st.caption(f"Source detail: {source_label}")
+    if show_tags:
+        tag_col1, tag_col2 = st.columns([1, 3])
+        with tag_col1:
+            if source_name:
+                render_source_tag(source_name)
+        with tag_col2:
+            render_ticker_tags(tickers)
+        st.caption(f"Source detail: {source_label}")
 
     exec_summary = analysis.get("executive_summary", "")
     detailed = analysis.get("detailed_summary") or analysis.get("summary", "")
@@ -251,15 +303,16 @@ def page_analyze() -> None:
 
 def page_history() -> None:
     st.header("Saved analyses")
+    _init_history_confirm_state()
 
     sources = list_source_names()
     tickers_all = list_tickers()
 
-    col1, col2 = st.columns(2)
-    with col1:
+    filter_left, filter_right = st.columns(2)
+    with filter_left:
         source_options = ["All sources"] + sources
         source_pick = st.selectbox("Filter by source", source_options, key="hist_source")
-    with col2:
+    with filter_right:
         ticker_options = ["All tickers"] + tickers_all
         ticker_pick = st.selectbox("Filter by ticker", ticker_options, key="hist_ticker")
 
@@ -283,15 +336,16 @@ def page_history() -> None:
 
     for row in rows:
         row_id = row["id"]
-        head_col, rerun_col, del_col = st.columns([6, 1, 1])
+        row_left, row_right = st.columns(2)
 
-        with head_col:
+        with row_left:
+            tag_col1, tag_col2 = st.columns([1, 4])
+            with tag_col1:
+                render_source_tag(row.get("source_name", ""))
+            with tag_col2:
+                render_ticker_tags(row.get("detected_tickers", []))
+
             with st.expander(history_expander_label(row)):
-                tag_row1, tag_row2 = st.columns([1, 3])
-                with tag_row1:
-                    render_source_tag(row.get("source_name", ""))
-                with tag_row2:
-                    render_ticker_tags(row.get("detected_tickers", []))
                 st.caption(
                     f"{row['created_at'][:19]} · {row['source_type']} · "
                     f"{row['source_label'][:120]}"
@@ -301,6 +355,7 @@ def page_history() -> None:
                     row["detected_tickers"],
                     row["source_label"],
                     row.get("source_name", ""),
+                    show_tags=False,
                 )
 
                 full = get_analysis(row_id)
@@ -308,20 +363,10 @@ def page_history() -> None:
                     with st.expander("Extracted text (for debugging)"):
                         st.text(full["clean_text"][:8000])
 
-        with rerun_col:
-            if st.button("Re-run", key=f"rerun_{row_id}", help="Re-analyze with latest code"):
-                try:
-                    with st.spinner("Re-running analysis (2–5 min)..."):
-                        rerun_analysis(row_id)
-                    st.success(f"Updated #{row_id}")
-                except Exception as exc:
-                    st.error(str(exc))
-                st.rerun()
+        with row_right:
+            _render_history_actions(row_id)
 
-        with del_col:
-            if st.button("Delete", key=f"delete_{row_id}", help="Remove from history"):
-                delete_analyses([row_id])
-                st.rerun()
+        st.divider()
 
 
 def main() -> None:
