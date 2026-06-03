@@ -179,8 +179,8 @@ def _hist_open_key(row_id: int) -> str:
     return f"hist_open_{row_id}"
 
 
-def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> bool:
-    """Two-line header: chevron + date/title + menu; then source + tickers."""
+def _render_history_list_header(row: dict, row_id: int) -> bool:
+    """Two-line header: chevron + date/title; then source + tickers."""
     open_key = _hist_open_key(row_id)
     if open_key not in st.session_state:
         st.session_state[open_key] = False
@@ -213,9 +213,7 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
         meta_parts.append(tickers)
     meta_html = dot.join(meta_parts)
 
-    chev_col, title_col, menu_col = st.columns(
-        [0.5, 10.5, 1], vertical_alignment="center"
-    )
+    chev_col, title_col = st.columns([0.5, 11.5], vertical_alignment="center")
     with chev_col:
         chevron = "▾" if st.session_state[open_key] else "▸"
         if st.button(
@@ -231,12 +229,9 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
             f'<div style="line-height:1.45;min-width:0;">{headline}</div>',
             unsafe_allow_html=True,
         )
-    with menu_col:
-        if not pending:
-            _render_history_actions(row_id)
 
     if meta_html:
-        _, meta_col, _ = st.columns([0.5, 10.5, 1])
+        _, meta_col = st.columns([0.5, 11.5])
         with meta_col:
             st.markdown(
                 f"""
@@ -322,27 +317,7 @@ def _render_confirm_panel(
             st.rerun()
 
 
-def _on_hist_action(row_id: int) -> None:
-    pick = st.session_state.get(f"hist_act_{row_id}", "⋮")
-    if pick == "Re-run":
-        st.session_state.pending_rerun_id = row_id
-        st.session_state.pending_delete_id = None
-    elif pick == "Delete":
-        st.session_state.pending_delete_id = row_id
-        st.session_state.pending_rerun_id = None
-    st.session_state[f"hist_act_{row_id}"] = "⋮"
-    st.rerun()
-
-
 def _render_history_actions(row_id: int) -> None:
-    st.selectbox(
-        "Action",
-        options=["⋮", "Re-run", "Delete"],
-        key=f"hist_act_{row_id}",
-        label_visibility="collapsed",
-        on_change=_on_hist_action,
-        args=(row_id,),
-    )
     with st.popover("⋮"):
         if st.button(
             "Re-run",
@@ -362,6 +337,15 @@ def _render_history_actions(row_id: int) -> None:
             st.session_state.pending_delete_id = row_id
             st.session_state.pending_rerun_id = None
             st.rerun()
+
+
+def _render_history_section_heading(title: str, row_id: int, *, pending: bool) -> None:
+    heading_col, menu_col = st.columns([10, 1], vertical_alignment="center")
+    with heading_col:
+        st.markdown(f"### {title}")
+    with menu_col:
+        if not pending:
+            _render_history_actions(row_id)
 
 
 def render_stocks_mentioned(company_opinions: list[dict]) -> None:
@@ -437,16 +421,21 @@ def render_history_analysis_body(
     analysis: dict,
     source_label: str,
     *,
+    row_id: int,
+    pending: bool = False,
     clean_text: str | None = None,
 ) -> None:
     exec_summary = analysis.get("executive_summary", "")
     detailed = analysis.get("detailed_summary") or analysis.get("summary", "")
 
     if exec_summary:
-        st.markdown("### At a glance")
+        _render_history_section_heading("At a glance", row_id, pending=pending)
         st.write(exec_summary)
+    else:
+        _render_history_section_heading("Detailed summary", row_id, pending=pending)
 
-    st.markdown("### Detailed summary")
+    if exec_summary:
+        st.markdown("### Detailed summary")
     if detailed:
         word_count = len(detailed.split())
         st.caption(f"~{word_count} words · ~{max(3, min(5, word_count // 220))} min read")
@@ -604,13 +593,6 @@ def page_history() -> None:
             font-size: 1rem;
             line-height: 1;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] button {
-            min-width: 2rem;
-            min-height: 2rem;
-            padding: 0.2rem 0.45rem;
-            font-size: 1.15rem;
-            line-height: 1;
-        }
         @media (max-width: 640px) {
             div[data-testid="stSelectbox"] {
                 max-width: 9.5rem;
@@ -620,33 +602,9 @@ def page_history() -> None:
             }
             div[data-testid="stVerticalBlockBorderWrapper"] > div > div[data-testid="stHorizontalBlock"] {
                 display: grid !important;
-                grid-template-columns: 1.75rem minmax(0, 1fr) 2.5rem !important;
+                grid-template-columns: 1.75rem minmax(0, 1fr) !important;
                 column-gap: 0.3rem !important;
-                row-gap: 0 !important;
                 align-items: start !important;
-                flex-wrap: unset !important;
-            }
-            div[data-testid="stVerticalBlockBorderWrapper"] > div > div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-                width: auto !important;
-                flex: unset !important;
-                min-width: 0 !important;
-            }
-            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] {
-                display: none !important;
-            }
-            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] {
-                display: block !important;
-                max-width: 2.5rem !important;
-                min-width: 2.5rem !important;
-            }
-            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-                min-height: 1.75rem !important;
-                padding: 0 0.2rem !important;
-            }
-        }
-        @media (min-width: 641px) {
-            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stSelectbox"] {
-                display: none !important;
             }
         }
         </style>
@@ -688,7 +646,7 @@ def page_history() -> None:
         full = get_analysis(row_id)
 
         with st.container(border=True):
-            expanded = _render_history_list_header(row, row_id, pending=pending)
+            expanded = _render_history_list_header(row, row_id)
 
             if st.session_state.pending_delete_id == row_id:
                 _render_confirm_panel(
@@ -707,6 +665,8 @@ def page_history() -> None:
                 render_history_analysis_body(
                     row["analysis"],
                     row["source_label"],
+                    row_id=row_id,
+                    pending=pending,
                     clean_text=full["clean_text"] if full else None,
                 )
 
