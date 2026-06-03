@@ -148,7 +148,7 @@ def _history_source_inline_html(source_name: str) -> str:
     if not source_name:
         return ""
     return (
-        f'<span style="color:#64748b;font-size:0.78rem;font-weight:600;'
+        f'<span style="color:#64748b;font-size:0.88rem;font-weight:600;'
         f'white-space:nowrap;">{html.escape(source_name)}</span>'
     )
 
@@ -169,12 +169,10 @@ def _history_tickers_inline_html(row: dict) -> str:
         yahoo = html.escape(yahoo_quote_url(t))
         parts.append(
             f'<a href="{yahoo}" target="_blank" title="{html.escape(rating.upper())}" '
-            f'style="color:{color};font-weight:600;font-size:0.78rem;'
+            f'style="color:{color};font-weight:600;font-size:0.88rem;'
             f'text-decoration:none;white-space:nowrap;">{sym}</a>'
         )
-    return (
-        f'<span style="white-space:nowrap;">{" · ".join(parts)}</span>'
-    )
+    return f'<span style="display:inline;">{" · ".join(parts)}</span>'
 
 
 def _hist_open_key(row_id: int) -> str:
@@ -182,7 +180,7 @@ def _hist_open_key(row_id: int) -> str:
 
 
 def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> bool:
-    """Single compact row: chevron · source · tickers · date · title · menu."""
+    """Two-line header: chevron + date/title + menu; then source + tickers."""
     open_key = _hist_open_key(row_id)
     if open_key not in st.session_state:
         st.session_state[open_key] = False
@@ -192,31 +190,30 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
     tickers = _history_tickers_inline_html(row)
     dot = '<span style="color:#475569;"> · </span>'
 
-    segments: list[str] = []
-    if source:
-        segments.append(source)
-    if tickers:
-        segments.append(tickers)
-
     date_html = (
-        f'<span style="color:#94a3b8;white-space:nowrap;">{html.escape(date)}</span>'
+        f'<span style="color:#94a3b8;white-space:nowrap;font-size:0.92rem;">'
+        f"{html.escape(date)}</span>"
         if date
         else ""
     )
     title_html = (
-        f'<span style="font-weight:600;color:#f1f5f9;">'
-        f"{html.escape(article_title)}</span>"
+        f'<span style="font-weight:600;color:#f1f5f9;font-size:0.98rem;'
+        f"display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;"
+        f'overflow:hidden;">{html.escape(article_title)}</span>'
     )
-    headline = date_html + (dot if date else "") + title_html if date else title_html
-    segments.append(
-        f'<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;'
-        f'white-space:nowrap;">{headline}</span>'
-    )
-    row_html = dot.join(segments)
+    if date:
+        headline = f"{date_html}{dot}{title_html}"
+    else:
+        headline = title_html
 
-    chev_col, meta_col, menu_col = st.columns(
-        [0.42, 10.83, 0.75], vertical_alignment="center"
-    )
+    meta_parts: list[str] = []
+    if source:
+        meta_parts.append(source)
+    if tickers:
+        meta_parts.append(tickers)
+    meta_html = dot.join(meta_parts)
+
+    chev_col, body_col = st.columns([0.55, 11.45], vertical_alignment="top")
     with chev_col:
         chevron = "▾" if st.session_state[open_key] else "▸"
         if st.button(
@@ -227,19 +224,26 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
         ):
             st.session_state[open_key] = not st.session_state[open_key]
             st.rerun()
-    with meta_col:
-        st.markdown(
-            f"""
-            <div style="display:flex;align-items:center;gap:0;min-width:0;width:100%;
-            overflow:hidden;font-size:0.84rem;line-height:1.35;">
-              {row_html}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with menu_col:
-        if not pending:
-            _render_history_actions(row_id)
+    with body_col:
+        title_col, menu_col = st.columns([10.2, 1.3], vertical_alignment="top")
+        with title_col:
+            st.markdown(
+                f'<div style="line-height:1.45;min-width:0;">{headline}</div>',
+                unsafe_allow_html=True,
+            )
+        with menu_col:
+            if not pending:
+                _render_history_actions(row_id)
+        if meta_html:
+            st.markdown(
+                f"""
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.1rem 0;
+                line-height:1.45;margin-top:0.15rem;font-size:0.88rem;min-width:0;">
+                  {meta_html}
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     return st.session_state[open_key]
 
@@ -553,17 +557,23 @@ def page_history() -> None:
             gap: 0.25rem !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-tertiary"] {
-            min-width: 1.5rem;
-            padding: 0.1rem 0.25rem;
-            font-size: 0.95rem;
+            min-width: 1.75rem;
+            min-height: 1.75rem;
+            padding: 0.15rem 0.3rem;
+            font-size: 1.05rem;
             line-height: 1;
         }
         div[data-testid="stPopover"] button {
-            min-width: 2rem;
-            padding: 0.2rem 0.55rem;
-            font-size: 1.15rem;
+            min-width: 2.1rem;
+            min-height: 2.1rem;
+            padding: 0.25rem 0.55rem;
+            font-size: 1.2rem;
             line-height: 1;
-            float: right;
+        }
+        @media (max-width: 640px) {
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                padding: 0.45rem 0.5rem 0.35rem !important;
+            }
         }
         </style>
         """,
