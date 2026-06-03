@@ -213,7 +213,9 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
         meta_parts.append(tickers)
     meta_html = dot.join(meta_parts)
 
-    chev_col, body_col = st.columns([0.55, 11.45], vertical_alignment="top")
+    chev_col, title_col, menu_col = st.columns(
+        [0.5, 10.5, 1], vertical_alignment="center"
+    )
     with chev_col:
         chevron = "▾" if st.session_state[open_key] else "▸"
         if st.button(
@@ -224,21 +226,22 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> boo
         ):
             st.session_state[open_key] = not st.session_state[open_key]
             st.rerun()
-    with body_col:
-        title_col, menu_col = st.columns([10.2, 1.3], vertical_alignment="top")
-        with title_col:
-            st.markdown(
-                f'<div style="line-height:1.45;min-width:0;">{headline}</div>',
-                unsafe_allow_html=True,
-            )
-        with menu_col:
-            if not pending:
-                _render_history_actions(row_id)
-        if meta_html:
+    with title_col:
+        st.markdown(
+            f'<div style="line-height:1.45;min-width:0;">{headline}</div>',
+            unsafe_allow_html=True,
+        )
+    with menu_col:
+        if not pending:
+            _render_history_actions(row_id)
+
+    if meta_html:
+        _, meta_col, _ = st.columns([0.5, 10.5, 1])
+        with meta_col:
             st.markdown(
                 f"""
                 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.1rem 0;
-                line-height:1.45;margin-top:0.15rem;font-size:0.88rem;min-width:0;">
+                line-height:1.45;margin-top:0.1rem;font-size:0.88rem;min-width:0;">
                   {meta_html}
                 </div>
                 """,
@@ -548,38 +551,59 @@ def page_history() -> None:
     st.markdown(
         """
         <style>
-        div[data-testid="stSelectbox"] label { font-size: 0.8rem; }
+        /* Compact history filters — 16px prevents iOS zoom on focus */
+        div[data-testid="stSelectbox"] {
+            max-width: 11rem;
+        }
+        div[data-testid="stSelectbox"] label {
+            font-size: 0.75rem !important;
+            margin-bottom: 0.1rem !important;
+        }
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            min-height: 2rem !important;
+            font-size: 16px !important;
+        }
         div[data-testid="stVerticalBlockBorderWrapper"] {
             margin-bottom: 0.3rem !important;
-            padding: 0.3rem 0.45rem 0.25rem !important;
+            padding: 0.35rem 0.45rem 0.3rem !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            gap: 0.25rem !important;
+            gap: 0.15rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div > div[data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="column"] {
+            min-width: 0 !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-tertiary"] {
-            min-width: 1.75rem;
-            min-height: 1.75rem;
-            padding: 0.15rem 0.3rem;
-            font-size: 1.05rem;
+            min-width: 1.65rem;
+            min-height: 1.65rem;
+            padding: 0.1rem 0.25rem;
+            font-size: 1rem;
             line-height: 1;
         }
-        div[data-testid="stPopover"] button {
-            min-width: 2.1rem;
-            min-height: 2.1rem;
-            padding: 0.25rem 0.55rem;
-            font-size: 1.2rem;
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPopover"] button {
+            min-width: 2rem;
+            min-height: 2rem;
+            padding: 0.2rem 0.45rem;
+            font-size: 1.15rem;
             line-height: 1;
         }
         @media (max-width: 640px) {
+            div[data-testid="stSelectbox"] {
+                max-width: 9.5rem;
+            }
             div[data-testid="stVerticalBlockBorderWrapper"] {
-                padding: 0.45rem 0.5rem 0.35rem !important;
+                padding: 0.35rem 0.4rem 0.28rem !important;
             }
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-    filter_left, filter_right, _ = st.columns([1.4, 1.4, 5])
+    filter_left, filter_right, _ = st.columns([0.95, 0.95, 6])
     with filter_left:
         source_options = ["All sources"] + sources
         source_pick = st.selectbox("Source", source_options, key="hist_source")
