@@ -153,8 +153,16 @@ def _history_ticker_tags_html(row: dict) -> str:
     )
 
 
-def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> None:
-    """Always-visible list row: source + menu on line 1; date, title, tags on line 2."""
+def _hist_open_key(row_id: int) -> str:
+    return f"hist_open_{row_id}"
+
+
+def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> bool:
+    """Line 1: source + tags + menu. Line 2: chevron + date + title. Returns expanded."""
+    open_key = _hist_open_key(row_id)
+    if open_key not in st.session_state:
+        st.session_state[open_key] = False
+
     date, article_title = _history_date_and_title(row)
     source = _source_tag_html(row.get("source_name", ""))
     tag_html = _history_ticker_tags_html(row)
@@ -168,31 +176,46 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> Non
         f'<span style="font-weight:600;color:#f1f5f9;">'
         f"{html.escape(article_title)}</span>"
     )
-    tags_block = (
-        f'<span style="flex-shrink:0;margin-left:0.25rem;">{tag_html}</span>'
-        if tag_html
+    tags_inline = tag_html or ""
+    source_line = (
+        f'<div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;">'
+        f"{source}{tags_inline}</div>"
+        if source or tags_inline
         else ""
     )
 
-    source_col, menu_col = st.columns([10, 0.75], vertical_alignment="center")
-    with source_col:
-        if source:
-            st.markdown(source, unsafe_allow_html=True)
+    meta_col, menu_col = st.columns([10, 0.75], vertical_alignment="center")
+    with meta_col:
+        if source_line:
+            st.markdown(source_line, unsafe_allow_html=True)
     with menu_col:
         if not pending:
             _render_history_actions(row_id)
 
-    st.markdown(
-        f"""
-        <div style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap;
-        min-width:0;width:100%;margin-top:0.15rem;">
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;
-          white-space:nowrap;">{date_html}{title_html}</span>
-          {tags_block}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    chev_col, title_col = st.columns([0.45, 11.55], vertical_alignment="center")
+    with chev_col:
+        chevron = "▾" if st.session_state[open_key] else "▸"
+        if st.button(
+            chevron,
+            key=f"hist_toggle_{row_id}",
+            type="tertiary",
+            help="Show or hide analysis",
+        ):
+            st.session_state[open_key] = not st.session_state[open_key]
+            st.rerun()
+    with title_col:
+        st.markdown(
+            f"""
+            <div style="display:flex;align-items:center;min-width:0;width:100%;
+            margin-top:0.05rem;">
+              <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;
+              white-space:nowrap;">{date_html}{title_html}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    return st.session_state[open_key]
 
 
 def _init_history_confirm_state() -> None:
@@ -503,15 +526,11 @@ def page_history() -> None:
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
             gap: 0.25rem !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stExpander"] {
-            border: none !important;
-            margin-bottom: 0 !important;
-        }
-        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stExpander"] details summary {
-            padding-top: 0.15rem;
-            padding-bottom: 0.15rem;
-            font-size: 0.85rem;
-            color: #94a3b8;
+        div[data-testid="stVerticalBlockBorderWrapper"] button[data-testid="stBaseButton-tertiary"] {
+            min-width: 1.5rem;
+            padding: 0.1rem 0.25rem;
+            font-size: 0.95rem;
+            line-height: 1;
         }
         div[data-testid="stPopover"] button {
             min-width: 2rem;
@@ -559,7 +578,7 @@ def page_history() -> None:
         full = get_analysis(row_id)
 
         with st.container(border=True):
-            _render_history_list_header(row, row_id, pending=pending)
+            expanded = _render_history_list_header(row, row_id, pending=pending)
 
             if st.session_state.pending_delete_id == row_id:
                 _render_confirm_panel(
@@ -574,7 +593,7 @@ def page_history() -> None:
                     title_snippet=_history_date_and_title(row)[1],
                 )
 
-            with st.expander("View analysis", expanded=False):
+            if expanded:
                 render_history_analysis_body(
                     row["analysis"],
                     row["source_label"],
