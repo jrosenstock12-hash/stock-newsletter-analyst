@@ -172,7 +172,7 @@ def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> Non
         f'<span style="flex-shrink:0;">{tag_html}</span>' if tag_html else ""
     )
 
-    meta_col, action_col = st.columns([10, 2], vertical_alignment="center")
+    meta_col, action_col = st.columns([11, 0.75], vertical_alignment="center")
     with meta_col:
         st.markdown(
             f"""
@@ -263,8 +263,7 @@ def _render_confirm_panel(
 
 
 def _render_history_actions(row_id: int) -> None:
-    btn_rerun, btn_del = st.columns(2, gap="small")
-    with btn_rerun:
+    with st.popover("⋮"):
         if st.button(
             "Re-run",
             key=f"rerun_{row_id}",
@@ -274,7 +273,6 @@ def _render_history_actions(row_id: int) -> None:
             st.session_state.pending_rerun_id = row_id
             st.session_state.pending_delete_id = None
             st.rerun()
-    with btn_del:
         if st.button(
             "Delete",
             key=f"delete_{row_id}",
@@ -510,6 +508,12 @@ def page_history() -> None:
             padding-bottom: 0.15rem;
             font-size: 0.85rem;
             color: #94a3b8;
+        }
+        div[data-testid="stPopover"] button {
+            min-width: 2rem;
+            padding: 0.2rem 0.55rem;
+            font-size: 1.15rem;
+            line-height: 1;
         }
         </style>
         """,

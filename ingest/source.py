@@ -109,18 +109,25 @@ def derive_source_name(
 
 
 def finalize_ingest(ingest) -> "IngestResult":
-    """Attach source_name if missing."""
+    """Attach source_name and article_date when missing."""
     from dataclasses import replace
 
+    from ingest.date import detect_date_in_text
     from ingest.models import IngestResult
 
-    if ingest.source_name:
+    source_name = ingest.source_name or derive_source_name(
+        source_type=ingest.source_type,
+        source_label=ingest.source_label,
+        text=ingest.text,
+    )
+    article_date = ingest.article_date
+    if not article_date and ingest.text:
+        article_date = detect_date_in_text(ingest.text)
+
+    if source_name == ingest.source_name and article_date == ingest.article_date:
         return ingest
     return replace(
         ingest,
-        source_name=derive_source_name(
-            source_type=ingest.source_type,
-            source_label=ingest.source_label,
-            text=ingest.text,
-        ),
+        source_name=source_name,
+        article_date=article_date,
     )

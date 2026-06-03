@@ -45,16 +45,22 @@ def parse_email_date_header(raw: str | None) -> str:
         return ""
 
 
-def detect_date_in_text(text: str, limit: int = 2000) -> str:
-    """Heuristic: find a date near the top of pasted content."""
+def detect_date_in_text(text: str, limit: int = 5000) -> str:
+    """Heuristic: find a publish date near the top of content."""
     head = text[:limit]
     patterns = [
+        r"(?:Published|Posted|Date)\s*[:\-]\s*"
+        r"((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4})",
         r"(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
         r"\d{4}-\d{2}-\d{2}",
+        r"\d{1,2}/\d{1,2}/\d{4}",
     ]
     for pattern in patterns:
         if match := re.search(pattern, head, re.IGNORECASE):
-            return normalize_date(match.group(0))
+            group = match.group(1) if match.lastindex else match.group(0)
+            normalized = normalize_date(group)
+            if normalized:
+                return normalized
     return ""
 
 

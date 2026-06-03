@@ -7,7 +7,7 @@ import trafilatura
 
 from config import USER_AGENT
 from ingest.clean import clean_newsletter_text
-from ingest.date import normalize_date
+from ingest.date import detect_date_in_text, normalize_date
 from ingest.models import IngestResult
 from ingest.source import finalize_ingest
 
@@ -95,6 +95,21 @@ def _substack_hint(url: str) -> str:
     return ""
 
 
+def _date_from_html(html: str) -> str:
+    patterns = [
+        r'"datePublished"\s*:\s*"([^"]+)"',
+        r'property="article:published_time"\s+content="([^"]+)"',
+        r'name="pubdate"\s+content="([^"]+)"',
+        r'<time[^>]+datetime="([^"]+)"',
+    ]
+    for pattern in patterns:
+        if match := re.search(pattern, html, re.IGNORECASE):
+            normalized = normalize_date(match.group(1))
+            if normalized:
+                return normalized
+    return ""
+
+
 def fetch_url(url: str) -> IngestResult:
     url = normalize_url(url.strip())
     if not url.startswith(("http://", "https://")):
@@ -140,6 +155,10 @@ def fetch_url(url: str) -> IngestResult:
     article_date = ""
     if metadata and metadata.date:
         article_date = normalize_date(metadata.date)
+    if not article_date:
+        article_date = _date_from_html(html)
+    if not article_date:
+        article_date = detect_date_in_text(text)
 
     return finalize_ingest(
         IngestResult(

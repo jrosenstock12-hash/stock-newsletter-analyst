@@ -8,7 +8,7 @@ from analyze.schema import StockAnalysis
 from analyze.tickers import detect_tickers
 from config import get_openai_api_key, get_openai_model
 from db.database import get_analysis, save_analysis, update_analysis
-from ingest.date import format_display_title, normalize_date
+from ingest.date import detect_date_in_text, format_display_title, normalize_date
 from ingest.models import IngestResult
 from ingest.source import finalize_ingest
 
@@ -116,6 +116,8 @@ def _resolve_article_date(ingest: IngestResult, parsed: StockAnalysis) -> str:
         normalized = normalize_date(candidate)
         if normalized:
             return normalized
+    if ingest.text:
+        return detect_date_in_text(ingest.text)
     return ""
 
 
