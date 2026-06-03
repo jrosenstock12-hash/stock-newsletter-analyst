@@ -110,6 +110,48 @@ def save_analysis(
         return int(cursor.lastrowid)
 
 
+def update_analysis(
+    analysis_id: int,
+    *,
+    source_type: str,
+    source_label: str,
+    source_name: str,
+    title: str,
+    clean_text: str,
+    detected_tickers: list[str],
+    analysis: dict[str, Any],
+) -> int:
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE analyses SET
+                created_at = ?,
+                source_type = ?,
+                source_label = ?,
+                source_name = ?,
+                title = ?,
+                clean_text = ?,
+                detected_tickers = ?,
+                analysis_json = ?,
+                status = 'done'
+            WHERE id = ?
+            """,
+            (
+                datetime.now(timezone.utc).isoformat(),
+                source_type,
+                source_label,
+                source_name,
+                title,
+                clean_text,
+                json.dumps(detected_tickers),
+                json.dumps(analysis),
+                analysis_id,
+            ),
+        )
+        conn.commit()
+    return analysis_id
+
+
 def _row_to_summary(row: sqlite3.Row) -> dict[str, Any]:
     analysis = json.loads(row["analysis_json"])
     tickers = tickers_from_analysis(analysis)

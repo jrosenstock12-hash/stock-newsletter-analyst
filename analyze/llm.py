@@ -5,7 +5,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from analyze.llm_core import analyze_ingest_dict
+from analyze.llm_core import analyze_ingest_dict, rerun_saved_analysis
 from analyze.schema import StockAnalysis
 from config import PROJECT_ROOT
 from ingest.models import IngestResult
@@ -81,9 +81,19 @@ def test_openai_connection() -> str:
     return result.get("message", "connected")
 
 
+def _result_to_tuple(result: dict) -> tuple[StockAnalysis, list[str], int]:
+    analysis = StockAnalysis.model_validate(result["analysis"])
+    return analysis, result["tickers"], result["analysis_id"]
+
+
 def analyze_content(
     ingest: IngestResult,
+    *,
+    replace_id: int | None = None,
 ) -> tuple[StockAnalysis, list[str], int]:
+    if replace_id is not None:
+        return rerun_analysis(replace_id)
+
     job = {
         "title": ingest.title,
         "text": ingest.text,
@@ -98,5 +108,17 @@ def analyze_content(
     else:
         result = _run_worker(job)
 
-    analysis = StockAnalysis.model_validate(result["analysis"])
-    return analysis, result["tickers"], result["analysis_id"]
+    return _result_to_tuple(result)
+
+
+def _use_in_process_worker() -> bool:
+    return _on_streamlit_cloud() or Path("/mount/src").is_dir()
+
+
+def rerun_analysis(analysis_id: int) -> tuple[StockAnalysis, list[str], int]:
+    """Re-analyze stored article text and update the same history entry."""
+    if _use_in_process_worker():
+        return rerun_saved_analysis(analysis_id)
+
+    result = _run_worker({"replace_id": analysis_id})
+    return _result_to_tuple(result)

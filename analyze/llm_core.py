@@ -1,10 +1,12 @@
+from typing import Any
+
 from openai import OpenAI
 
 from analyze.companies import build_public_company_context, target_summary_words
 from analyze.schema import StockAnalysis
 from analyze.tickers import detect_tickers
 from config import get_openai_api_key, get_openai_model
-from db.database import save_analysis
+from db.database import get_analysis, save_analysis, update_analysis
 from ingest.date import format_display_title, normalize_date
 from ingest.models import IngestResult
 from ingest.source import finalize_ingest
@@ -113,7 +115,9 @@ def _resolve_article_date(ingest: IngestResult, parsed: StockAnalysis) -> str:
     return ""
 
 
-def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]:
+def analyze_ingest(
+    ingest: IngestResult, *, replace_id: int | None = None
+) -> tuple[StockAnalysis, list[str], int]:
     ingest = finalize_ingest(ingest)
     tickers = detect_tickers(ingest.text)
     client = _make_client()
@@ -185,7 +189,7 @@ def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]
         article_date,
     )
 
-    analysis_id = save_analysis(
+    payload = dict(
         source_type=ingest.source_type,
         source_label=ingest.source_label,
         source_name=ingest.source_name,
@@ -194,20 +198,49 @@ def analyze_ingest(ingest: IngestResult) -> tuple[StockAnalysis, list[str], int]
         detected_tickers=mentioned_tickers,
         analysis=parsed.model_dump(),
     )
+    if replace_id is not None:
+        analysis_id = update_analysis(replace_id, **payload)
+    else:
+        analysis_id = save_analysis(**payload)
 
     return parsed, mentioned_tickers, analysis_id
 
 
-def analyze_ingest_dict(job: dict) -> dict:
-    ingest = IngestResult(
-        title=job["title"],
-        text=job["text"],
-        source_type=job["source_type"],
-        source_label=job["source_label"],
-        article_date=job.get("article_date", ""),
-        source_name=job.get("source_name", ""),
+def ingest_from_saved(record: dict[str, Any]) -> IngestResult:
+    """Rebuild ingest input from a stored analysis for re-run."""
+    analysis = record["analysis"]
+    title = analysis.get("title") or record["title"]
+    return IngestResult(
+        title=title,
+        text=record["clean_text"],
+        source_type=record["source_type"],
+        source_label=record["source_label"],
+        article_date=analysis.get("article_date", ""),
+        source_name=record.get("source_name", ""),
     )
-    analysis, tickers, analysis_id = analyze_ingest(ingest)
+
+
+def rerun_saved_analysis(analysis_id: int) -> tuple[StockAnalysis, list[str], int]:
+    record = get_analysis(analysis_id)
+    if not record:
+        raise ValueError(f"Analysis #{analysis_id} not found.")
+    return analyze_ingest(ingest_from_saved(record), replace_id=analysis_id)
+
+
+def analyze_ingest_dict(job: dict) -> dict:
+    replace_id = job.get("replace_id")
+    if replace_id:
+        analysis, tickers, analysis_id = rerun_saved_analysis(int(replace_id))
+    else:
+        ingest = IngestResult(
+            title=job["title"],
+            text=job["text"],
+            source_type=job["source_type"],
+            source_label=job["source_label"],
+            article_date=job.get("article_date", ""),
+            source_name=job.get("source_name", ""),
+        )
+        analysis, tickers, analysis_id = analyze_ingest(ingest)
     return {
         "analysis_id": analysis_id,
         "tickers": tickers,

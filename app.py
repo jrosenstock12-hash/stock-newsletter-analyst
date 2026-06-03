@@ -1,6 +1,6 @@
 import streamlit as st
 
-from analyze.llm import analyze_content, test_openai_connection
+from analyze.llm import analyze_content, rerun_analysis, test_openai_connection
 from config import apply_streamlit_secrets, get_openai_api_key
 from db.database import (
     delete_analyses,
@@ -282,31 +282,46 @@ def page_history() -> None:
     st.caption(f"Showing {len(rows)} saved analyses")
 
     for row in rows:
-        with st.expander(history_expander_label(row)):
-            tag_row1, tag_row2 = st.columns([1, 3])
-            with tag_row1:
-                render_source_tag(row.get("source_name", ""))
-            with tag_row2:
-                render_ticker_tags(row.get("detected_tickers", []))
-            st.caption(
-                f"{row['created_at'][:19]} · {row['source_type']} · "
-                f"{row['source_label'][:120]}"
-            )
-            render_analysis(
-                row["analysis"],
-                row["detected_tickers"],
-                row["source_label"],
-                row.get("source_name", ""),
-            )
+        row_id = row["id"]
+        head_col, rerun_col, del_col = st.columns([6, 1, 1])
 
-            if st.button("Delete", key=f"delete_{row['id']}"):
-                delete_analyses([row["id"]])
+        with head_col:
+            with st.expander(history_expander_label(row)):
+                tag_row1, tag_row2 = st.columns([1, 3])
+                with tag_row1:
+                    render_source_tag(row.get("source_name", ""))
+                with tag_row2:
+                    render_ticker_tags(row.get("detected_tickers", []))
+                st.caption(
+                    f"{row['created_at'][:19]} · {row['source_type']} · "
+                    f"{row['source_label'][:120]}"
+                )
+                render_analysis(
+                    row["analysis"],
+                    row["detected_tickers"],
+                    row["source_label"],
+                    row.get("source_name", ""),
+                )
+
+                full = get_analysis(row_id)
+                if full:
+                    with st.expander("Extracted text (for debugging)"):
+                        st.text(full["clean_text"][:8000])
+
+        with rerun_col:
+            if st.button("Re-run", key=f"rerun_{row_id}", help="Re-analyze with latest code"):
+                try:
+                    with st.spinner("Re-running analysis (2–5 min)..."):
+                        rerun_analysis(row_id)
+                    st.success(f"Updated #{row_id}")
+                except Exception as exc:
+                    st.error(str(exc))
                 st.rerun()
 
-            full = get_analysis(row["id"])
-            if full:
-                with st.expander("Extracted text (for debugging)"):
-                    st.text(full["clean_text"][:8000])
+        with del_col:
+            if st.button("Delete", key=f"delete_{row_id}", help="Remove from history"):
+                delete_analyses([row_id])
+                st.rerun()
 
 
 def main() -> None:
