@@ -153,9 +153,11 @@ def _history_ticker_tags_html(row: dict) -> str:
     )
 
 
-def _history_meta_html(row: dict) -> str:
+def _render_history_list_header(row: dict, row_id: int, *, pending: bool) -> None:
+    """Always-visible list row: source, date, title, colored tags, actions."""
     date, article_title = _history_date_and_title(row)
     source = _source_tag_html(row.get("source_name", ""))
+    tag_html = _history_ticker_tags_html(row)
     date_html = (
         f'<span style="color:#94a3b8;white-space:nowrap;">{html.escape(date)}</span>'
         f'<span style="color:#64748b;"> · </span>'
@@ -166,35 +168,24 @@ def _history_meta_html(row: dict) -> str:
         f'<span style="font-weight:600;color:#f1f5f9;">'
         f"{html.escape(article_title)}</span>"
     )
-    return (
-        f'<div style="display:flex;align-items:center;gap:0.45rem;min-width:0;">'
-        f'<div style="flex-shrink:0;">{source}</div>'
-        f"<div style=\"min-width:0;overflow:hidden;text-overflow:ellipsis;"
-        f'white-space:nowrap;">{date_html}{title_html}</div></div>'
+    tags_block = (
+        f'<span style="flex-shrink:0;">{tag_html}</span>' if tag_html else ""
     )
 
-
-def _history_expander_label(row: dict) -> str:
-    date, title = _history_date_and_title(row)
-    label = f"{date} — {title}" if date else title
-    return label[:120] + ("…" if len(label) > 120 else "")
-
-
-def _render_history_header_row(row: dict, row_id: int, *, pending: bool) -> None:
-    meta_col, tags_col, action_col = st.columns(
-        [5.5, 4, 1.5], vertical_alignment="center"
-    )
+    meta_col, action_col = st.columns([10, 2], vertical_alignment="center")
     with meta_col:
-        st.markdown(_history_meta_html(row), unsafe_allow_html=True)
-    with tags_col:
-        tag_html = _history_ticker_tags_html(row)
-        if tag_html:
-            st.markdown(
-                f'<div style="display:flex;justify-content:flex-end;'
-                f'align-items:center;flex-wrap:wrap;gap:0.15rem;">'
-                f"{tag_html}</div>",
-                unsafe_allow_html=True,
-            )
+        st.markdown(
+            f"""
+            <div style="display:flex;align-items:center;gap:0.45rem;flex-wrap:wrap;
+            min-width:0;width:100%;">
+              <span style="flex-shrink:0;">{source}</span>
+              <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;
+              white-space:nowrap;">{date_html}{title_html}</span>
+              {tags_block}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     with action_col:
         if not pending:
             _render_history_actions(row_id)
@@ -287,7 +278,7 @@ def _render_history_actions(row_id: int) -> None:
         if st.button(
             "Delete",
             key=f"delete_{row_id}",
-            type="secondary",
+            type="primary",
             use_container_width=True,
         ):
             st.session_state.pending_delete_id = row_id
@@ -503,17 +494,22 @@ def page_history() -> None:
         """
         <style>
         div[data-testid="stSelectbox"] label { font-size: 0.8rem; }
-        div[data-testid="stExpander"] {
+        div[data-testid="stVerticalBlockBorderWrapper"] {
             margin-bottom: 0.35rem !important;
-            border: 1px solid #334155;
-            border-radius: 0.5rem;
+            padding: 0.4rem 0.55rem 0.25rem !important;
         }
-        div[data-testid="stExpander"] details summary {
-            padding-top: 0.35rem;
-            padding-bottom: 0.35rem;
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            gap: 0.25rem !important;
         }
-        div[data-testid="stExpander"] div[data-testid="stExpanderDetails"] {
-            padding-top: 0.25rem;
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stExpander"] {
+            border: none !important;
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stExpander"] details summary {
+            padding-top: 0.15rem;
+            padding-bottom: 0.15rem;
+            font-size: 0.85rem;
+            color: #94a3b8;
         }
         </style>
         """,
@@ -553,8 +549,8 @@ def page_history() -> None:
         )
         full = get_analysis(row_id)
 
-        with st.expander(_history_expander_label(row), expanded=False):
-            _render_history_header_row(row, row_id, pending=pending)
+        with st.container(border=True):
+            _render_history_list_header(row, row_id, pending=pending)
 
             if st.session_state.pending_delete_id == row_id:
                 _render_confirm_panel(
@@ -569,11 +565,12 @@ def page_history() -> None:
                     title_snippet=_history_date_and_title(row)[1],
                 )
 
-            render_history_analysis_body(
-                row["analysis"],
-                row["source_label"],
-                clean_text=full["clean_text"] if full else None,
-            )
+            with st.expander("View analysis", expanded=False):
+                render_history_analysis_body(
+                    row["analysis"],
+                    row["source_label"],
+                    clean_text=full["clean_text"] if full else None,
+                )
 
 
 def main() -> None:
