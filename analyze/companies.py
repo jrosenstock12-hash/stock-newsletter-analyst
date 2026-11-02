@@ -9,8 +9,9 @@ from config import USER_AGENT
 
 YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
 PUBLIC_QUOTE_TYPES = {"EQUITY", "ETF"}
-MAX_LLM_COMPANY_NAMES = 30
-MAX_YAHOO_LOOKUPS = 20
+MAX_LLM_COMPANY_NAMES = 25
+MAX_YAHOO_LOOKUPS = 10
+MAX_YAHOO_NAME_CANDIDATES = 15
 YAHOO_TIMEOUT_SEC = 8.0
 
 # Well-known names articles reference without tickers
@@ -76,7 +77,7 @@ class PublicCompany:
         return " — ".join(parts)
 
 
-MAX_COMPANIES_FOR_ANALYSIS = 30
+MAX_COMPANIES_FOR_ANALYSIS = 20
 
 
 def target_summary_words(article_text: str, *, company_count: int = 0) -> int:
@@ -195,6 +196,8 @@ def resolve_company_names(
             continue
         if cleaned.upper() in seen:
             continue
+        if looks_private_company(cleaned):
+            continue
         if yahoo_lookups < max_yahoo:
             pending_yahoo.append(cleaned)
             yahoo_lookups += 1
@@ -218,9 +221,10 @@ def resolve_company_names(
 
 def extract_company_names_llm(client, model: str, article_text: str) -> list[str]:
     """Ask the model for organization names mentioned in the article."""
-    excerpt = article_text[:30000]
+    excerpt = article_text[:20000]
     response = client.chat.completions.create(
         model=model,
+        max_tokens=2000,
         messages=[
             {
                 "role": "system",
@@ -259,13 +263,30 @@ def build_public_company_context(
     companies = known_companies_from_text(article_text)
     seen = {c.ticker for c in companies}
 
-    names = extract_company_names_llm(client, model, article_text)
-
     for ticker in detected_tickers:
-        if ticker not in seen:
-            names.append(ticker)
+        upper = ticker.upper().strip()
+        if upper and upper not in seen:
+            seen.add(upper)
+            companies.append(
+                PublicCompany(name=upper, ticker=upper, source="detected")
+            )
 
-    for company in resolve_company_names(names):
+    names = extract_company_names_llm(client, model, article_text)
+    seen_name_keys: set[str] = set()
+    yahoo_names: list[str] = []
+    for name in names:
+        cleaned = name.strip()
+        if not cleaned or looks_private_company(cleaned):
+            continue
+        key = cleaned.lower()
+        if key in seen_name_keys:
+            continue
+        seen_name_keys.add(key)
+        yahoo_names.append(cleaned)
+        if len(yahoo_names) >= MAX_YAHOO_NAME_CANDIDATES:
+            break
+
+    for company in resolve_company_names(yahoo_names):
         if company.ticker not in seen:
             seen.add(company.ticker)
             companies.append(company)

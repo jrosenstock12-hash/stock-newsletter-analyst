@@ -639,7 +639,8 @@ def page_analyze() -> None:
     if st.button("Analyze", type="primary", use_container_width=True):
         try:
             with st.spinner(
-                "Reading content and running analysis (may take 2–5 minutes)..."
+                "Analyzing… Step 1: extract companies · Step 2: AI summary "
+                "(usually 30–90 seconds; very long articles can take a few minutes)"
             ):
                 if input_mode == "Link (URL)":
                     if not url.strip():

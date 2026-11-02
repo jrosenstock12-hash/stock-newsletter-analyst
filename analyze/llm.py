@@ -29,6 +29,15 @@ def _on_streamlit_cloud() -> bool:
     )
 
 
+def _run_analysis_in_process() -> bool:
+    """Skip subprocess on hosted deploys (Streamlit Cloud, Railway, etc.)."""
+    if _on_streamlit_cloud():
+        return True
+    if os.environ.get("PORT"):
+        return True
+    return False
+
+
 def _run_worker(job: dict) -> dict:
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False, dir=PROJECT_ROOT / "data"
@@ -103,7 +112,7 @@ def analyze_content(
         "source_name": ingest.source_name,
     }
 
-    if _on_streamlit_cloud():
+    if _run_analysis_in_process():
         result = analyze_ingest_dict(job)
     else:
         result = _run_worker(job)
@@ -112,7 +121,7 @@ def analyze_content(
 
 
 def _use_in_process_worker() -> bool:
-    return _on_streamlit_cloud() or Path("/mount/src").is_dir()
+    return _run_analysis_in_process()
 
 
 def rerun_analysis(analysis_id: int) -> tuple[StockAnalysis, list[str], int]:

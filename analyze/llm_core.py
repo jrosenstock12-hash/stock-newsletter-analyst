@@ -29,10 +29,9 @@ Rules:
 4. For each company_opinion:
    - is_publicly_traded: false for private companies; true when a public ticker applies.
    - ticker: set from the Yahoo hint list when public; leave empty when private.
-   - article_says: the MOST IMPORTANT field — 8-12 sentences when the article discusses
-     the company substantively. Quote or paraphrase the author's specific claims, metrics,
-     product names, comparisons, and forward-looking statements. Use 3-4 sentences for
-     brief mentions. Never invent or pad with generic industry commentary.
+   - article_says: the MOST IMPORTANT field — usually 3-5 sentences per company so
+     long articles stay fast to analyze. Use 6-8 sentences only for companies central
+     to the piece. Quote or paraphrase the author's claims; never pad with generic commentary.
    - rating, confidence, rationale: ONLY for is_publicly_traded=true (buy/hold/sell/avoid).
      Leave rating and confidence null for private companies.
 5. executive_summary: 4-8 sentences naming each organization the article materially
@@ -163,7 +162,7 @@ def analyze_ingest(
                         read_time=read_time,
                         tickers=", ".join(tickers) if tickers else "none detected",
                         public_companies_block=public_block,
-                        text=ingest.text[:120000],
+                        text=ingest.text[:80000],
                     ),
                 },
             ],
