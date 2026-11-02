@@ -9,8 +9,8 @@ from config import USER_AGENT
 
 YAHOO_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
 PUBLIC_QUOTE_TYPES = {"EQUITY", "ETF"}
-MAX_LLM_COMPANY_NAMES = 18
-MAX_YAHOO_LOOKUPS = 8
+MAX_LLM_COMPANY_NAMES = 30
+MAX_YAHOO_LOOKUPS = 20
 YAHOO_TIMEOUT_SEC = 8.0
 
 # Well-known names articles reference without tickers
@@ -35,6 +35,18 @@ KNOWN_PUBLIC = {
     "mag 7": None,
     "mag7": None,
 }
+
+PRIVATE_NAME_KEYS = frozenset(k for k, known in KNOWN_PUBLIC.items() if known is None)
+
+
+def looks_private_company(name: str) -> bool:
+    lower = name.lower().strip()
+    if not lower:
+        return False
+    for key in PRIVATE_NAME_KEYS:
+        if lower == key or re.search(rf"\b{re.escape(key)}\b", lower):
+            return True
+    return False
 
 
 class PublicCompany:
@@ -64,7 +76,7 @@ class PublicCompany:
         return " — ".join(parts)
 
 
-MAX_COMPANIES_FOR_ANALYSIS = 8
+MAX_COMPANIES_FOR_ANALYSIS = 30
 
 
 def target_summary_words(article_text: str, *, company_count: int = 0) -> int:
@@ -213,10 +225,10 @@ def extract_company_names_llm(client, model: str, article_text: str) -> list[str
             {
                 "role": "system",
                 "content": (
-                    "Extract company, corporation, or brand names that appear explicitly "
-                    "in the article text and could be publicly traded. Do NOT infer "
-                    "companies that might be affected but are not named. Include index "
-                    "nicknames only if stated (e.g. Magnificent 7). "
+                    "Extract every company, corporation, brand, or organization name that "
+                    "appears explicitly in the article — publicly traded or private "
+                    "(e.g. OpenAI, Anthropic, AWS as Amazon). Do NOT infer names that are "
+                    "not in the text. Do NOT limit to Magnificent 7 or mega-cap tech. "
                     'Return JSON only: {"companies": ["Name1", "Name2"]}. No commentary.'
                 ),
             },
@@ -274,7 +286,7 @@ def build_public_company_context(
         f"- {line}" for line in lines
     )
     block += (
-        f"\n\nONLY include company_opinions for these tickers "
-        f"(each must be named/discussed in the article): {tickers_only}"
+        f"\n\nPublic ticker hints (use when the article discusses these names; "
+        f"not an exhaustive list): {tickers_only or 'none resolved'}"
     )
     return companies, block

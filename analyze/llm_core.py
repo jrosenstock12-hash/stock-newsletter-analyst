@@ -2,7 +2,11 @@ from typing import Any
 
 from openai import OpenAI
 
-from analyze.companies import build_public_company_context, target_summary_words
+from analyze.companies import (
+    build_public_company_context,
+    looks_private_company,
+    target_summary_words,
+)
 from analyze.mentions import filter_company_opinions
 from analyze.schema import StockAnalysis
 from analyze.tickers import detect_tickers
@@ -16,25 +20,28 @@ SYSTEM_PROMPT = """You are a financial research assistant analyzing newsletters 
 
 Rules:
 1. Clearly separate what the ARTICLE states vs your AI opinion derived from that content.
-2. company_opinions may ONLY include companies the author explicitly names or clearly
-   discusses in the article text. Do NOT add tickers that are merely plausible beneficiaries,
-   competitors, suppliers, or industry peers unless the article itself discusses them.
+2. company_opinions must include EVERY company or organization the author explicitly
+   names or clearly discusses — public and private (e.g. OpenAI, Anthropic, TSMC, AMD).
+   Do NOT limit to Magnificent 7 or mega-cap tech. Do NOT add names that are only
+   plausible beneficiaries unless the article discusses them.
 3. If a company is not named or discussed in the article, omit it entirely — never write
    "not mentioned" or speculate about indirect exposure.
-4. For each company_opinion (max 8 tickers):
+4. For each company_opinion:
+   - is_publicly_traded: false for private companies; true when a public ticker applies.
+   - ticker: set from the Yahoo hint list when public; leave empty when private.
    - article_says: the MOST IMPORTANT field — 8-12 sentences when the article discusses
      the company substantively. Quote or paraphrase the author's specific claims, metrics,
-     product names (e.g. Bedrock, 800VDC), comparisons to peers, and forward-looking
-     statements. Use 3-4 sentences only for brief mentions. Never invent or pad with
-     generic industry commentary.
-   - rationale: 2-3 sentences with buy/hold/sell/avoid tied tightly to article_says.
-5. Write detailed_summary as a narrative within the target word count — not a bullet list.
-6. executive_summary is only 2-4 sentences for a quick skim.
+     product names, comparisons, and forward-looking statements. Use 3-4 sentences for
+     brief mentions. Never invent or pad with generic industry commentary.
+   - rating, confidence, rationale: ONLY for is_publicly_traded=true (buy/hold/sell/avoid).
+     Leave rating and confidence null for private companies.
+5. executive_summary: 4-8 sentences naming each organization the article materially
+   discusses (not only the largest caps).
+6. detailed_summary: narrative within the target word count; weave in all named companies.
 7. Set article_date to YYYY-MM-DD when the publish date appears in the article; otherwise leave empty.
 8. Be conservative with ratings when evidence is weak, promotional, or macro-only.
 9. Do not invent facts, prices, or events not supported by the article.
-10. Do NOT produce an overall article-level buy/sell rating — only per-stock opinions in company_opinions.
-11. Use the verified Yahoo Finance list only for companies the article actually discusses."""
+10. Do NOT produce an overall article-level buy/sell rating."""
 
 USER_PROMPT_TEMPLATE = """Analyze this article/newsletter for public stock implications.
 
@@ -52,9 +59,9 @@ Regex-detected tickers (may be incomplete): {tickers}
 Return structured analysis with:
 - title: concise article title (no date prefix)
 - article_date: YYYY-MM-DD if known
-- executive_summary: 2-4 sentences
+- executive_summary: 4-8 sentences covering all named organizations
 - detailed_summary: ~{target_words} word narrative (3-5 min read)
-- company_opinions: up to 8 entries; only companies named/discussed in the article"""
+- company_opinions: one entry per company/org named or discussed in the article (public and private)"""
 
 
 def _make_client() -> OpenAI:
@@ -180,11 +187,16 @@ def analyze_ingest(
     article_date = _resolve_article_date(ingest, parsed)
     parsed.article_date = article_date
 
-    allowed = {c.ticker.upper() for c in public_companies}
+    for opinion in parsed.company_opinions:
+        if looks_private_company(opinion.company_name):
+            opinion.is_publicly_traded = False
+            opinion.ticker = ""
+            opinion.rating = None
+            opinion.confidence = None
+
     parsed.company_opinions = filter_company_opinions(
         ingest.text,
         list(parsed.company_opinions),
-        allowed_tickers=allowed,
     )
     mentioned_tickers = [
         co.ticker.upper() for co in parsed.company_opinions if co.ticker

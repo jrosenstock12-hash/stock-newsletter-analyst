@@ -4,10 +4,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class CompanyOpinion(BaseModel):
-    ticker: str
     company_name: str
-    rating: Literal["buy", "hold", "sell", "avoid"]
-    confidence: Literal["low", "medium", "high"]
+    is_publicly_traded: bool = Field(
+        default=True,
+        description="False for private companies (Anthropic, OpenAI, etc.)",
+    )
+    ticker: str = Field(
+        default="",
+        description="Yahoo ticker when is_publicly_traded; empty when private",
+    )
+    rating: Literal["buy", "hold", "sell", "avoid"] | None = Field(
+        default=None,
+        description="Only for publicly traded names; omit for private companies",
+    )
+    confidence: Literal["low", "medium", "high"] | None = Field(
+        default=None,
+        description="Only when rating is set",
+    )
     article_says: str = Field(
         description=(
             "Primary field: 8-12 sentences on what the author explicitly said about "
@@ -43,14 +56,19 @@ class StockAnalysis(BaseModel):
         description="Article publish date as YYYY-MM-DD when known from the text",
     )
     executive_summary: str = Field(
-        description="2-4 sentence high-level takeaway"
+        description=(
+            "4-8 sentence takeaway naming each organization the article discusses"
+        )
     )
     detailed_summary: str = Field(
         description="Long-form narrative summary, 3-5 minute read"
     )
     company_opinions: list[CompanyOpinion] = Field(
         default_factory=list,
-        description="Per publicly traded company discussed in the article",
+        description=(
+            "One entry per company or organization explicitly named in the article "
+            "(public and private)"
+        ),
     )
     disclaimer: str = (
         "Not financial advice. This analysis is based solely on the provided "

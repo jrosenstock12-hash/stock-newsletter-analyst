@@ -142,14 +142,21 @@ def article_says_references_company(opinion: CompanyOpinion) -> bool:
     return False
 
 
+def _opinion_dedupe_key(opinion: CompanyOpinion) -> str:
+    ticker = (opinion.ticker or "").upper().strip()
+    if ticker:
+        return f"t:{ticker}"
+    return f"n:{opinion.company_name.strip().lower()}"
+
+
 def dedupe_company_opinions(
     opinions: list[CompanyOpinion],
 ) -> list[CompanyOpinion]:
     seen: set[str] = set()
     kept: list[CompanyOpinion] = []
     for opinion in opinions:
-        key = opinion.ticker.upper().strip()
-        if not key or key in seen:
+        key = _opinion_dedupe_key(opinion)
+        if not opinion.company_name.strip() or key in seen:
             continue
         seen.add(key)
         kept.append(opinion)
@@ -164,8 +171,13 @@ def filter_company_opinions(
 ) -> list[CompanyOpinion]:
     kept: list[CompanyOpinion] = []
     for opinion in opinions:
-        ticker = opinion.ticker.upper().strip()
-        if allowed_tickers is not None and ticker not in allowed_tickers:
+        ticker = (opinion.ticker or "").upper().strip()
+        if (
+            allowed_tickers is not None
+            and ticker
+            and opinion.is_publicly_traded
+            and ticker not in allowed_tickers
+        ):
             continue
         if opinion_claims_not_mentioned(opinion):
             continue

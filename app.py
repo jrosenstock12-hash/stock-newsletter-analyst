@@ -40,6 +40,7 @@ TICKER_TAG_STYLES: dict[str, tuple[str, str, str]] = {
     "hold": ("#422006", "#fde047", "#ca8a04"),
     "sell": ("#450a0a", "#fca5a5", "#dc2626"),
     "avoid": ("#1f2937", "#9ca3af", "#6b7280"),
+    "private": ("#312e81", "#c4b5fd", "#6366f1"),
 }
 
 
@@ -68,20 +69,33 @@ def _source_tag_html(source_name: str) -> str:
     )
 
 
+def _is_public_company_entry(co: dict) -> bool:
+    if co.get("is_publicly_traded") is False:
+        return False
+    return bool(str(co.get("ticker", "")).strip())
+
+
+def _company_tag_label(co: dict) -> tuple[str, str, bool]:
+    """(label, style_key, link_to_yahoo)."""
+    if _is_public_company_entry(co):
+        t = str(co.get("ticker", "")).strip().upper()
+        rating = str(co.get("rating") or "hold").lower()
+        return t, rating, True
+    name = str(co.get("company_name", "")).strip() or "?"
+    if len(name) > 18:
+        name = name[:16].rstrip() + "…"
+    return name, "private", False
+
+
 def _ticker_tag_entries(
     *,
     company_opinions: list[dict] | None = None,
     tickers: list[str] | None = None,
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, bool]]:
     if company_opinions:
-        entries: list[tuple[str, str]] = []
-        for co in company_opinions:
-            t = str(co.get("ticker", "")).strip()
-            if t:
-                entries.append((t, str(co.get("rating", "hold")).lower()))
-        return entries
+        return [_company_tag_label(co) for co in company_opinions]
     if tickers:
-        return [(t.strip(), "hold") for t in tickers if t and t.strip()]
+        return [(t.strip().upper(), "hold", True) for t in tickers if t and t.strip()]
     return []
 
 
@@ -97,17 +111,28 @@ def _ticker_tags_html(
     if not entries:
         return ""
     tags = []
-    for t, rating in entries:
-        bg, fg, border = TICKER_TAG_STYLES.get(rating, TICKER_TAG_STYLES["avoid"])
-        sym = html.escape(t.upper())
-        yahoo = html.escape(yahoo_quote_url(t))
-        tags.append(
-            f'<a href="{yahoo}" target="_blank" title="{html.escape(rating.upper())}" '
-            f'style="display:inline-block;background:{bg};color:{fg};'
-            f"border:1px solid {border};border-radius:999px;padding:0.12rem 0.5rem;"
-            f'font-size:0.75rem;font-weight:600;margin-left:0.2rem;text-decoration:none;'
-            f'white-space:nowrap;">{sym}</a>'
+    for label, style_key, linkable in entries:
+        bg, fg, border = TICKER_TAG_STYLES.get(
+            style_key, TICKER_TAG_STYLES["avoid"]
         )
+        sym = html.escape(label)
+        title = "Private company" if style_key == "private" else style_key.upper()
+        pill = (
+            f"display:inline-block;background:{bg};color:{fg};"
+            f"border:1px solid {border};border-radius:999px;padding:0.12rem 0.5rem;"
+            f"font-size:0.75rem;font-weight:600;margin-left:0.2rem;"
+            f"white-space:nowrap;"
+        )
+        if linkable:
+            yahoo = html.escape(yahoo_quote_url(label))
+            tags.append(
+                f'<a href="{yahoo}" target="_blank" title="{html.escape(title)}" '
+                f'style="{pill}text-decoration:none;">{sym}</a>'
+            )
+        else:
+            tags.append(
+                f'<span title="{html.escape(title)}" style="{pill}">{sym}</span>'
+            )
     return "".join(tags)
 
 
@@ -169,15 +194,26 @@ def _history_tickers_inline_html(row: dict) -> str:
     if not entries:
         return ""
     parts = []
-    for t, rating in entries:
-        color = RATING_COLORS.get(rating, "#9ca3af")
-        sym = html.escape(t.upper())
-        yahoo = html.escape(yahoo_quote_url(t))
-        parts.append(
-            f'<a href="{yahoo}" target="_blank" title="{html.escape(rating.upper())}" '
-            f'style="color:{color};font-weight:600;font-size:0.88rem;'
-            f'text-decoration:none;white-space:nowrap;">{sym}</a>'
-        )
+    for label, style_key, linkable in entries:
+        if style_key == "private":
+            color = "#a5b4fc"
+        else:
+            color = RATING_COLORS.get(style_key, "#9ca3af")
+        sym = html.escape(label)
+        if linkable:
+            yahoo = html.escape(yahoo_quote_url(label))
+            title = style_key.upper()
+            parts.append(
+                f'<a href="{yahoo}" target="_blank" title="{html.escape(title)}" '
+                f'style="color:{color};font-weight:600;font-size:0.88rem;'
+                f'text-decoration:none;white-space:nowrap;">{sym}</a>'
+            )
+        else:
+            parts.append(
+                f'<span title="Private company" '
+                f'style="color:{color};font-weight:600;font-size:0.88rem;'
+                f'white-space:nowrap;">{sym}</span>'
+            )
     return f'<span style="display:inline;">{" · ".join(parts)}</span>'
 
 
@@ -423,24 +459,34 @@ def render_stocks_mentioned(company_opinions: list[dict]) -> None:
     if not company_opinions:
         return
 
-    st.markdown("### Stocks Mentioned")
+    st.markdown("### By company")
     for co in company_opinions:
-        ticker = co.get("ticker", "?")
-        rating = co.get("rating", "hold")
-        color = RATING_COLORS.get(rating, "#6b7280")
-        yahoo = yahoo_quote_url(ticker)
-
-        st.markdown(
-            f"#### [{ticker}]({yahoo}) — {co.get('company_name', '')} "
-            f"<span style='color:{color};font-weight:700'>"
-            f"{rating.upper()}</span> "
-            f"({co.get('confidence', 'medium')} confidence)",
-            unsafe_allow_html=True,
-        )
+        name = co.get("company_name", "")
+        is_public = _is_public_company_entry(co)
+        if is_public:
+            ticker = str(co.get("ticker", "")).strip().upper()
+            rating = str(co.get("rating") or "hold").lower()
+            color = RATING_COLORS.get(rating, "#6b7280")
+            confidence = co.get("confidence") or "medium"
+            yahoo = yahoo_quote_url(ticker)
+            st.markdown(
+                f"#### [{ticker}]({yahoo}) — {html.escape(name)} "
+                f"<span style='color:{color};font-weight:700'>"
+                f"{rating.upper()}</span> "
+                f"({confidence} confidence)",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"#### {html.escape(name)} "
+                f"<span style='color:#a5b4fc;font-weight:600;font-size:0.85rem;'>"
+                f"Private</span>",
+                unsafe_allow_html=True,
+            )
         if co.get("article_says"):
             st.markdown("**What the author said**")
             st.markdown(co["article_says"])
-        if co.get("rationale"):
+        if is_public and co.get("rationale"):
             st.markdown("**Opinion**")
             st.write(co["rationale"])
         st.markdown("")
